@@ -827,5 +827,27 @@ class PanchangAndSearchUnitTest {
         assertTrue(breakdown.contains("Godhuli Muhurat: 05:30 PM - 05:56 PM"))
         assertTrue(govardhan.significance.contains("Annakut") && govardhan.significance.contains("56 food items"))
     }
-}
 
+    @Test
+    fun testCityFindByIdDoesNotSilentlySubstituteBengaluru() {
+        assertNull(
+            "Unknown city ID must return null rather than silently substituting Bengaluru",
+            City.findById("non_existent_city_id")
+        )
+        assertNull(City.findById(""))
+
+        val unknownLookup = City.lookupById("atlantis_999")
+        assertTrue(unknownLookup is com.example.panchang.CityLookupResult.Unknown)
+        assertEquals(
+            "atlantis_999",
+            (unknownLookup as com.example.panchang.CityLookupResult.Unknown).requestedId
+        )
+
+        val knownLookup = City.lookupById("varanasi")
+        assertTrue(knownLookup is com.example.panchang.CityLookupResult.Found)
+        assertEquals(City.VARANASI, (knownLookup as com.example.panchang.CityLookupResult.Found).city)
+
+        assertEquals(City.DELHI, City.DEFAULT_CITY)
+        assertEquals(City.DEFAULT_CITY, com.example.data.preferences.UserPreferences().hostCity)
+    }
+}

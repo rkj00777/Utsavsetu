@@ -5,7 +5,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.panchang.City
+import com.example.panchang.CityLookupResult
 import com.example.panchang.RegionalTradition
+import com.example.platform.monitoring.AppCrashMonitor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -127,27 +129,30 @@ class UserPreferencesRepository(private val context: Context) {
                 RegionalTradition.values().firstOrNull { it.id == id }
             }.toSet().ifEmpty { setOf(RegionalTradition.NORTH_INDIAN) }
 
-            val cityId = preferences[PreferencesKeys.HOST_CITY_ID] ?: "delhi"
+            val cityId = preferences[PreferencesKeys.HOST_CITY_ID] ?: City.DEFAULT_CITY.id
             val customName = preferences[PreferencesKeys.CUSTOM_CITY_NAME]
             val customState = preferences[PreferencesKeys.CUSTOM_CITY_STATE]
             val customLat = preferences[PreferencesKeys.CUSTOM_CITY_LAT]
             val customLon = preferences[PreferencesKeys.CUSTOM_CITY_LON]
             val isGps = preferences[PreferencesKeys.CUSTOM_CITY_IS_GPS] ?: false
 
-            val knownCity = City.ALL_CITIES.firstOrNull { it.id == cityId }
+            val knownCity = City.findById(cityId)
             val city = when {
                 customName != null && customLat != null && customLon != null && (knownCity == null || isGps) -> {
+                    val nearest = City.findNearestCity(customLat, customLon)
                     City(
                         id = cityId,
                         name = customName,
-                        state = customState ?: "India",
+                        state = customState ?: nearest.state,
                         latitude = customLat,
                         longitude = customLon,
-                        isLocationDetected = isGps
+                        timeZoneId = knownCity?.timeZoneId ?: nearest.timeZoneId,
+                        isLocationDetected = isGps,
+                        panchangConvention = knownCity?.panchangConvention ?: nearest.panchangConvention
                     )
                 }
                 knownCity != null -> knownCity
-                else -> City.DELHI
+                else -> City.DEFAULT_CITY
             }
 
             val langCode = preferences[PreferencesKeys.PREFERRED_LANGUAGE] ?: "en"
@@ -201,9 +206,17 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateHostCity(cityId: String) {
-        val known = City.findById(cityId)
-        updateHostCityObject(known)
+    suspend fun updateHostCity(cityId: String): Boolean {
+        return when (val lookup = City.lookupById(cityId)) {
+            is CityLookupResult.Found -> {
+                updateHostCityObject(lookup.city)
+                true
+            }
+            is CityLookupResult.Unknown -> {
+                AppCrashMonitor.recordBreadcrumb("CityLookup", "Ignored updateHostCity for unknown cityId: ${lookup.requestedId}")
+                false
+            }
+        }
     }
 
     suspend fun updateHostCityObject(city: City) {
@@ -304,6 +317,7 @@ class UserPreferencesRepository(private val context: Context) {
         city: City? = null
     ) {
         val resolvedCity = city ?: City.findById(cityId)
+            ?: throw IllegalArgumentException("Unknown city ID in completeSetup: '$cityId'")
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.SELECTED_TRADITIONS] = traditions.map { it.id }.toSet()
             preferences[PreferencesKeys.HOST_CITY_ID] = resolvedCity.id
@@ -338,13 +352,23 @@ class UserPreferencesRepository(private val context: Context) {
                 preferences[PreferencesKeys.SELECTED_TRADITIONS] = traditionIds.toSet()
             }
             if (!hostCityId.isNullOrBlank()) {
-                val c = City.findById(hostCityId)
-                preferences[PreferencesKeys.HOST_CITY_ID] = c.id
-                preferences[PreferencesKeys.CUSTOM_CITY_NAME] = c.name
-                preferences[PreferencesKeys.CUSTOM_CITY_STATE] = c.state
-                preferences[PreferencesKeys.CUSTOM_CITY_LAT] = c.latitude
-                preferences[PreferencesKeys.CUSTOM_CITY_LON] = c.longitude
-                preferences[PreferencesKeys.CUSTOM_CITY_IS_GPS] = false
+                when (val lookup = City.lookupById(hostCityId)) {
+                    is CityLookupResult.Found -> {
+                        val c = lookup.city
+                        preferences[PreferencesKeys.HOST_CITY_ID] = c.id
+                        preferences[PreferencesKeys.CUSTOM_CITY_NAME] = c.name
+                        preferences[PreferencesKeys.CUSTOM_CITY_STATE] = c.state
+                        preferences[PreferencesKeys.CUSTOM_CITY_LAT] = c.latitude
+                        preferences[PreferencesKeys.CUSTOM_CITY_LON] = c.longitude
+                        preferences[PreferencesKeys.CUSTOM_CITY_IS_GPS] = false
+                    }
+                    is CityLookupResult.Unknown -> {
+                        AppCrashMonitor.recordBreadcrumb(
+                            "CloudRestore",
+                            "Skipped unknown hostCityId '${lookup.requestedId}' during cloud restore"
+                        )
+                    }
+                }
             }
             if (!preferredLanguageCode.isNullOrBlank()) {
                 preferences[PreferencesKeys.PREFERRED_LANGUAGE] = preferredLanguageCode

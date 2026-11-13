@@ -70,8 +70,12 @@ class ProfileViewModel(
 
     fun updateHostCity(cityId: String) {
         viewModelScope.launch {
-            userPreferencesRepository.updateHostCity(cityId)
-            syncIfSignedIn()
+            val updated = userPreferencesRepository.updateHostCity(cityId)
+            if (updated) {
+                syncIfSignedIn()
+            } else {
+                _uiState.update { it.copy(syncStatusMessage = "Unknown city ID: $cityId") }
+            }
         }
     }
 

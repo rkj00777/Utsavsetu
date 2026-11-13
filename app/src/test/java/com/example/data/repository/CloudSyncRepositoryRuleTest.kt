@@ -100,7 +100,7 @@ class CloudSyncRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
         val prefs = UserPreferences(
             selectedTraditions = setOf(RegionalTradition.NORTH_INDIAN, RegionalTradition.MAHARASHTRIAN),
-            hostCity = City.findById("bengaluru"),
+            hostCity = requireNotNull(City.findById("bengaluru")),
             preferredLanguage = AppLanguage.HINDI,
             dayBeforeReminder = true,
             morningOfReminder = true,

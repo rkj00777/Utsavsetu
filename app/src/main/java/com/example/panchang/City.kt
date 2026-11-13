@@ -58,6 +58,11 @@ enum class RegionalPanchangConvention(
     )
 }
 
+sealed class CityLookupResult {
+    data class Found(val city: City) : CityLookupResult()
+    data class Unknown(val requestedId: String) : CityLookupResult()
+}
+
 data class City(
     val id: String,
     val name: String,
@@ -261,7 +266,27 @@ data class City(
             SYDNEY, MELBOURNE, PORT_LOUIS, DURBAN, KATHMANDU
         )
 
-        fun findById(id: String): City = ALL_CITIES.firstOrNull { it.id == id } ?: BENGALURU
+        val DEFAULT_CITY: City = DELHI
+
+        /**
+         * Looks up a curated city by its canonical ID.
+         * Returns `null` when [id] is unknown rather than silently substituting another city,
+         * preventing inaccurate Panchang and Muhurat calculations.
+         */
+        fun findById(id: String): City? = ALL_CITIES.firstOrNull { it.id == id }
+
+        /**
+         * Explicit lookup returning [CityLookupResult.Found] or [CityLookupResult.Unknown]
+         * so callers must handle missing city IDs intentionally.
+         */
+        fun lookupById(id: String): CityLookupResult {
+            val match = findById(id)
+            return if (match != null) {
+                CityLookupResult.Found(match)
+            } else {
+                CityLookupResult.Unknown(id)
+            }
+        }
 
         fun searchCities(query: String): List<City> {
             val trimmed = query.trim().lowercase()
@@ -278,7 +303,7 @@ data class City(
         fun findNearestCity(latitude: Double, longitude: Double): City {
             return ALL_CITIES.minByOrNull { city ->
                 haversineDistanceKm(latitude, longitude, city.latitude, city.longitude)
-            } ?: BENGALURU
+            } ?: DEFAULT_CITY
         }
 
         fun createCustomGpsCity(
