@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.size() >= 2 &&
+             'hostCity' in data &&
+             'traditions' in data &&
+             data.keys().hasOnly([
+               'displayName',
+               'traditions',
+               'hostCity',
+               'preferredLanguage',
+               'reminderPrefs',
+               'themeMode',
+               'textScaleMode',
+               'savedFestivalIds',
+               'customReminders',
+               'pujaStepProgress',
+               'appMode',
+               'panditVoiceGender',
+               'updatedAt'
+             ]) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (data.traditions is list && data.traditions.size() <= 10 && (data.traditions.size() == 0 || data.traditions[0] is string)) &&
+             (data.hostCity is string && data.hostCity.size() >= 1 && data.hostCity.size() <= 50) &&
+             (!('preferredLanguage' in data) || (data.preferredLanguage is string && data.preferredLanguage.size() <= 10)) &&
+             (!('reminderPrefs' in data) || (data.reminderPrefs is map && data.reminderPrefs.size() <= 10)) &&
+             (!('themeMode' in data) || (data.themeMode is string && data.themeMode.size() <= 20)) &&
+             (!('textScaleMode' in data) || (data.textScaleMode is string && data.textScaleMode.size() <= 20)) &&
+             (!('savedFestivalIds' in data) || (data.savedFestivalIds is list && data.savedFestivalIds.size() <= 100 && (data.savedFestivalIds.size() == 0 || data.savedFestivalIds[0] is string))) &&
+             (!('customReminders' in data) || (data.customReminders is list && data.customReminders.size() <= 100 && (data.customReminders.size() == 0 || data.customReminders[0] is string))) &&
+             (!('pujaStepProgress' in data) || (data.pujaStepProgress is map && data.pujaStepProgress.size() <= 200)) &&
+             (!('appMode' in data) || (data.appMode is string && data.appMode.size() <= 20)) &&
+             (!('panditVoiceGender' in data) || (data.panditVoiceGender is string && data.panditVoiceGender in ['MALE', 'FEMALE'])) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time + duration.value(5, 'm')));
+    }
+
+    function isValidSamagriProgress(data) {
+      return data.size() >= 2 &&
+             'festivalId' in data &&
+             'year' in data &&
+             data.keys().hasOnly([
+               'festivalId',
+               'year',
+               'checkedItems',
+               'notes',
+               'updatedAt'
+             ]) &&
+             (data.festivalId is string && data.festivalId.size() >= 1 && data.festivalId.size() <= 100 && data.festivalId.matches('^[a-zA-Z0-9_\\-]+$')) &&
+             (data.year is int && data.year >= 2020 && data.year <= 2100) &&
+             (!('checkedItems' in data) || (data.checkedItems is list && data.checkedItems.size() <= 100 && (data.checkedItems.size() == 0 || data.checkedItems[0] is string))) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time + duration.value(5, 'm')));
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(request.resource.data);
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /samagri_progress/{progressId} {
+        allow get: if isOwner(userId) && isValidId(progressId);
+        allow list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(progressId) && isValidSamagriProgress(request.resource.data);
+        allow delete: if isOwner(userId) && isValidId(progressId);
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User preferences, saved festivals, custom reminders, pandit voice gender, and puja step progress.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "description": "User display name (max 100 chars)" },
+        "traditions": { "type": "array", "description": "Selected RegionalTradition IDs (max 10)" },
+        "hostCity": { "type": "string", "description": "Host city ID for Panchang calculation" },
+        "preferredLanguage": { "type": "string", "description": "Preferred UI language code" },
+        "reminderPrefs": { "type": "object", "description": "Global reminder toggles" },
+        "themeMode": { "type": "string", "description": "Theme preference (SYSTEM, LIGHT, DARK)" },
+        "textScaleMode": { "type": "string", "description": "Text scale preference (NORMAL, LARGE, EXTRA_LARGE)" },
+        "savedFestivalIds": { "type": "array", "description": "Bookmarked festival IDs (max 100)" },
+        "customReminders": { "type": "array", "description": "Serialized CustomReminderEntry strings (max 100)" },
+        "pujaStepProgress": { "type": "object", "description": "Map of festivalId to saved step index" },
+        "appMode": { "type": "string", "description": "Application mode (CONSUMER)" },
+        "panditVoiceGender": { "type": "string", "enum": ["MALE", "FEMALE"], "description": "Reciting Pandit voice gender" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update" }
+      }
+    },
+    "SamagriProgress": {
+      "title": "SamagriProgress",
+      "description": "Per-festival Samagri checklist progress and custom family notes.",
+      "type": "object",
+      "properties": {
+        "festivalId": { "type": "string", "description": "Festival identifier" },
+        "year": { "type": "integer", "description": "Observance year" },
+        "checkedItems": { "type": "array", "description": "Checked Samagri item IDs" },
+        "notes": { "type": "string", "description": "Personal family parampara notes" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile document keyed by Firebase Auth UID."
+    },
+    "/users/{userId}/samagri_progress/{progressId}": {
+      "schema": { "$ref": "#/entities/SamagriProgress" },
+      "description": "Samagri checklist progress documents scoped to user."
+    }
+  }
+}

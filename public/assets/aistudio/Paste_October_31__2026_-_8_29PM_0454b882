@@ -1,0 +1,1080 @@
+Here is the **complete, consolidated Gate 3 prompt for UtsavSetu**. It includes the first-launch experience, onboarding, dynamic UI, all five main tabs, the Living India design system, Panchang visualizations, reminders, accessibility, and testing.
+
+Copy the entire prompt into Google AI Studio **in your existing UtsavSetu project**. It is designed to implement the experience without hardcoding live content or drifting from your original concept.
+
+# UTSAVSETU — GATE 3
+## Complete UI/UX Transformation and Dynamic User Experience
+
+**Project:** Existing UtsavSetu Android application  
+**Platform:** Native Android using the existing Kotlin and Jetpack Compose architecture  
+**Design direction:** Living India · Modern Indian Luxury · Cosmic Panchang · Modern Ritual Companion  
+**Development mode:** Modify the existing application; do not create a replacement application.
+
+---
+
+# 1. PRIMARY OBJECTIVE
+
+Transform the existing UtsavSetu application into a distinctive, premium, modern Indian cultural companion.
+
+The experience should combine:
+- Cinematic Indian cultural imagery.
+- Elegant editorial typography.
+- Modern native Android interactions.
+- A personalized, dynamic festival experience.
+- Clear and trustworthy Panchang information.
+- Practical puja preparation and ritual guidance.
+- A beautiful, coherent first-launch experience.
+
+The application must feel contemporary and distinctive rather than like a conventional festival calendar built from repetitive cards.
+
+Implement the changes directly in the existing project. Do not stop after producing a design proposal or static mockups.
+
+## NON-NEGOTIABLE RULE
+
+Preserve the original UtsavSetu concept and existing functionality.
+
+Do not introduce unrelated features, rebuild the application from scratch, replace its architecture, or redesign the product into something else.
+
+---
+
+# 2. LOCKED PRODUCT SCOPE
+
+UtsavSetu exists to help users:
+
+1. Discover Indian festivals and observances.
+2. View city-specific Panchang and muhurat information.
+3. Understand puja vidhi.
+4. Prepare samagri checklists.
+5. Set festival reminders.
+6. Share festival information through native Android sharing and WhatsApp.
+
+Preserve the five primary navigation destinations:
+
+**Today | Calendar | Festivals | Panchang | Profile**
+
+Do not add social networking, community forums, e-commerce, AI chat, subscriptions, or unrelated product modules.
+
+Preserve the existing festival catalogue, Panchang engine, date evaluator, domain models, persistence, reminder scheduler, and sharing implementations wherever possible.
+
+Gate 3 is a UI/UX implementation phase. Do not change astronomical calculations or festival-observance rules as part of this task.
+
+---
+
+# 3. DESIGN SYSTEM: LIVING INDIA
+
+Create a cohesive design system that gives UtsavSetu its own recognizable identity.
+
+## 3.1 Design philosophy
+
+Combine four complementary ideas:
+
+### A. Living India
+Cinematic cultural imagery and seasonal visual transitions that make the application feel alive.
+
+### B. Cosmic Panchang
+Beautiful, restrained astronomical visualizations that make Panchang information easier to understand.
+
+### C. Festival Editorial
+A curated, editorial presentation of festival information, with strong typography and intentional visual hierarchy.
+
+### D. Modern Ritual Companion
+A practical, focused interface for preparing and following rituals.
+
+These are four design principles within one application, not four separate products.
+
+## 3.2 Colour palette
+
+Establish reusable semantic colour tokens.
+
+Suggested starting palette:
+
+- Deep Plum: `#38132F`
+- Midnight Indigo: `#17182E`
+- Warm Ivory: `#FFF7E9`
+- Saffron: `#F3A12C`
+- Vermilion: `#C84232`
+- Restrained Gold: `#C8A45D`
+- Warm Charcoal: `#29252A`
+- Muted Neutral: `#827B78`
+- Success Green: an accessible green suitable for positive confirmation states
+- Warning and Error: accessible semantic colours
+
+These are starting design values, not mandatory colours for every component.
+
+Use colour according to meaning and context.
+
+Do not cover the entire application in gold, gradients, or glass effects.
+
+## 3.3 Typography
+
+Use a refined typographic hierarchy.
+
+- Editorial serif typography for selected festival titles and expressive headings.
+- Clear sans-serif typography for navigation, dates, labels, and functional information.
+- Highly legible numeric typography for Panchang timings and countdowns.
+- Appropriate Indic-script typography when supported languages require it.
+
+Use fonts that are available, appropriately licensed, and compatible with the project.
+
+Avoid tiny captions, excessively decorative body text, and inconsistent font sizing.
+
+## 3.4 Surface treatment
+
+Use three complementary surface types:
+
+1. Immersive cinematic surfaces for selected hero sections.
+2. Warm, calm reading surfaces for religious instructions and festival details.
+3. Structured analytical surfaces for Panchang values, timings, and lists.
+
+Apply Liquid Glass selectively to overlays, hero controls, and suitable navigation elements.
+
+Do not use translucent surfaces when they reduce text contrast or readability.
+
+## 3.5 Design tokens
+
+Create or reuse central tokens for:
+- Colours.
+- Typography.
+- Spacing.
+- Corner radii.
+- Elevation.
+- Borders.
+- Icon sizing.
+- Animation duration.
+- Surface treatments.
+- Content margins.
+
+Prefer shared reusable components over independently styled screen implementations.
+
+---
+
+# 4. COMPLETE FIRST-LAUNCH EXPERIENCE
+
+The first launch is part of the product experience and must be implemented, not omitted.
+
+Implement the following sequence while allowing users to skip optional steps.
+
+## 4.1 Splash screen
+
+Create a premium branded splash experience.
+
+Visual direction:
+- UtsavSetu wordmark.
+- A distinctive lotus-inspired brand mark.
+- Deep plum or midnight indigo.
+- Restrained saffron or gold details.
+- Subtle, lightweight animation if appropriate.
+
+Use the appropriate Android splash-screen implementation for the existing project.
+
+Requirements:
+- Do not add an artificial loading delay.
+- Do not block the UI while nonessential work runs.
+- Restore existing preferences and initialize essential local state.
+- Navigate to the appropriate destination after initialization.
+- Respect system theme and platform requirements where appropriate.
+
+The splash screen must not become a second, unnecessarily prolonged loading screen.
+
+## 4.2 Welcome screen
+
+Create a visually distinctive welcome screen that communicates the app's purpose immediately.
+
+Suggested headline:
+
+**Celebrate every moment. Honour every tradition.**
+
+Suggested supporting text:
+
+Your festivals, Panchang, puja rituals and meaningful moments—together in one place.
+
+Primary action:
+**Get Started**
+
+Secondary action:
+**Explore UtsavSetu**
+
+Allow users to enter the application without completing optional setup if the existing application can provide a useful experience.
+
+Use cinematic cultural imagery, strong typography, intentional negative space, and a clear call to action.
+
+Do not create a generic three- or five-slide onboarding carousel unless the existing implementation has a compelling need for it.
+
+## 4.3 Location setup
+
+Provide a dedicated location-selection experience.
+
+Suggested headline:
+
+**Make UtsavSetu yours.**
+
+Suggested supporting text:
+
+Your location helps us show relevant Panchang timings and festival observances.
+
+Provide:
+- City search.
+- Supported city selection.
+- Use-current-location action, where supported.
+- Continue without a location when a meaningful limited experience is available.
+
+Requirements:
+- Request location permission only after an appropriate user action.
+- Keep manual city selection available.
+- Persist the selected city using the existing persistence architecture.
+- Clearly identify the selected location.
+- Never silently replace an unavailable city with another city.
+- Do not claim that location-specific information is available when the required inputs are missing.
+
+If location-dependent Panchang information cannot be calculated, explain why and provide an appropriate next action.
+
+## 4.4 Optional preferences
+
+Inspect the actual capabilities of the current application.
+
+Offer optional preferences only when supported:
+- Language.
+- Reminder preferences.
+- Light, dark, or system appearance.
+
+Provide **Skip for now**.
+
+Do not claim language support that the application does not have.
+
+Do not add nonfunctional switches or settings.
+
+Do not require users to complete every preference before entering the application.
+
+## 4.5 Notification introduction
+
+Explain the benefit before requesting Android notification permission.
+
+Suggested headline:
+
+**Never miss a meaningful moment.**
+
+Suggested supporting text:
+
+Receive festival reminders and notifications at the times you choose.
+
+Actions:
+- Enable Reminders.
+- Maybe Later.
+
+Request operating-system permission following an appropriate user action and in accordance with Android requirements.
+
+If permission is denied, keep the application usable.
+
+Preserve the existing reminder scheduler and independent reminder toggles.
+
+## 4.6 Onboarding completion
+
+Persist onboarding state using the existing DataStore or appropriate existing persistence mechanism.
+
+Requirements:
+- First-time users see onboarding.
+- Returning users go directly to the main application.
+- Interrupted setup can resume safely.
+- Optional steps may be skipped.
+- Partial setup must not accidentally be treated as complete.
+- Users can update their location and supported preferences later through Profile.
+
+Do not introduce mandatory sign-in or account creation.
+
+---
+
+# 5. DYNAMIC DATA — NO HARDCODED LIVE CONTENT
+
+This is a critical architectural requirement.
+
+The interface must respond to actual application data, user preferences, date changes, location changes, and navigation state.
+
+Do not build static mockups disguised as a functional application.
+
+## 5.1 Sources of truth
+
+Before implementation, inspect the existing codebase and identify the authoritative source for:
+
+- Current date.
+- Selected location.
+- Festival catalogue.
+- Festival dates and observance rules.
+- Panchang values.
+- Muhurat validation states.
+- Puja instructions.
+- Samagri lists.
+- Reminder preferences and state.
+- Favourites.
+- Appearance preferences.
+
+Use the existing repositories, domain models, ViewModels, evaluators, and persistence mechanisms.
+
+Do not create competing implementations of the same business logic inside composables.
+
+## 5.2 Current date
+
+Derive the current date from the device clock and the application's established date/time conventions.
+
+Use appropriate timezone handling.
+
+Do not hardcode a demonstration date.
+
+## 5.3 Selected location
+
+Read the saved or currently selected location.
+
+When the location changes:
+- Update relevant Panchang content.
+- Refresh location-dependent festival information where supported.
+- Refresh the appropriate sunrise/sunset information.
+- Update location labels consistently.
+
+Do not silently substitute a city.
+
+## 5.4 Next festival
+
+Derive the next applicable festival using the existing catalogue and date evaluator.
+
+Display:
+- Festival name.
+- Actual observance date.
+- Days remaining, where applicable.
+- Relevant available observance information.
+- Appropriate available artwork.
+
+Recalculate when the date, location, or underlying festival data changes.
+
+Handle:
+- The festival occurring today.
+- The next upcoming festival.
+- A date that has already passed.
+- Multiple festivals on one date.
+- An empty or incomplete catalogue.
+- Unavailable location-dependent information.
+
+Do not display stale countdowns.
+
+Do not invent dates or silently replace unresolved dates with guesses.
+
+## 5.5 Festival artwork
+
+Create a central mapping between existing festival identifiers and available artwork assets.
+
+The mapping may be defined in code or in an appropriate asset manifest.
+
+Do not scatter festival-specific image-selection logic across individual screens.
+
+When dedicated artwork is unavailable:
+- Use an appropriate generic cultural asset or restrained gradient.
+- Maintain text contrast.
+- Keep the actual festival name and date visible.
+- Do not display artwork representing an unrelated festival.
+
+Use bundled artwork where practical to preserve offline functionality.
+
+Do not introduce mandatory remote image dependencies.
+
+## 5.6 Panchang values
+
+Read values from the existing Panchang engine and domain models.
+
+Do not fabricate:
+- Tithi.
+- Nakshatra.
+- Sunrise or sunset.
+- Planetary positions.
+- Muhurat windows.
+- Festival observance dates.
+
+Respect the existing validation model and its semantics.
+
+If a value is unavailable, display an honest unavailable state.
+
+## 5.7 Dynamic calendar
+
+Generate calendar dates from the actual selected month and year.
+
+Use the existing festival catalogue and date evaluator to identify applicable festivals.
+
+Support:
+- Month changes.
+- Year boundaries.
+- Multiple festivals on one date.
+- Dates with no festival.
+- Date selection.
+- Festival details navigation.
+
+Do not hardcode calendar grids or individual festival dates in the UI.
+
+## 5.8 Dynamic lists
+
+Festival lists, counts, favourites, filters, and upcoming sections must derive from actual application state.
+
+Avoid duplicate data sources and duplicated business logic.
+
+Handle empty lists gracefully.
+
+---
+
+# 6. SCREEN 1 — TODAY
+
+Today is the signature experience of UtsavSetu.
+
+It should be visually memorable, immediately useful, and less cluttered than a conventional dashboard.
+
+## 6.1 Header
+
+Create a compact, premium header containing:
+- UtsavSetu brand mark.
+- Selected city.
+- Search access where supported.
+- Reminder or notification access where supported.
+
+Keep the header visually integrated with the hero.
+
+Maintain sufficient contrast over imagery.
+
+## 6.2 Cinematic hero
+
+Use an immersive image or background associated with the next relevant festival or the current cultural season.
+
+Use:
+- Intentional cropping.
+- Restrained overlays.
+- Elegant typography.
+- A clear visual focal point.
+- Generous negative space.
+
+Display:
+- Current date.
+- Next festival name.
+- Actual festival date.
+- Live countdown, where applicable.
+- A clear action to open festival details.
+
+The hero must adapt to the available catalogue and change appropriately when the next festival changes.
+
+Do not hardcode a specific festival into the general Today screen.
+
+## 6.3 Today's Panchang
+
+Create a compact summary with a distinct visual identity.
+
+Prioritize:
+- Tithi.
+- Nakshatra.
+- Sunrise.
+- Sunset.
+
+Display additional supported fields only when useful.
+
+Make the section easy to scan.
+
+Show unavailable or unverified information honestly.
+
+Provide a clear route to the full Panchang screen.
+
+## 6.4 Quick actions
+
+Provide direct access to:
+- Puja Vidhi.
+- Samagri.
+- Set Reminder.
+- Share.
+
+Use clear labels, consistent icons, and adequate touch targets.
+
+Connect every action to its actual implementation.
+
+## 6.5 Upcoming festivals
+
+Use a restrained editorial timeline or compact horizontal list.
+
+Avoid a long stack of oversized cards.
+
+Display:
+- Relevant artwork.
+- Festival name.
+- Actual date.
+- Applicable observance label, where available.
+
+Load data from the existing catalogue and evaluator.
+
+## 6.6 Scrolling and hierarchy
+
+Keep the first viewport focused on the next festival and essential daily information.
+
+Do not force the user to scroll past large decorative artwork to find the current date or essential actions.
+
+---
+
+# 7. SCREEN 2 — CALENDAR
+
+Create an elegant calendar that feels immersive without sacrificing usability.
+
+## 7.1 Layout
+
+Include:
+- Compact month selector.
+- Clear seven-day calendar grid.
+- Selected-date treatment.
+- Subtle festival indicators.
+- Festival list for the selected date.
+
+Use imagery or a cultural visual accent only where it improves the experience.
+
+Do not let decoration overwhelm the calendar itself.
+
+## 7.2 Interactions
+
+Support:
+- Previous and next month.
+- Date selection.
+- Navigation to a festival's details.
+- Multiple festivals on the same date.
+- Appropriate empty states.
+
+All dates must be generated dynamically.
+
+Ensure the selected date and displayed month remain consistent.
+
+## 7.3 Visual states
+
+Differentiate:
+- Today.
+- Selected date.
+- Festival dates.
+- Dates containing multiple festivals.
+- Dates with no available observance information.
+
+Do not rely on colour alone to convey meaning.
+
+---
+
+# 8. SCREEN 3 — FESTIVALS
+
+Make festival discovery feel like a contemporary Indian cultural magazine.
+
+## 8.1 Header and search
+
+Provide:
+- Elegant page title.
+- Concise supporting text.
+- Functional search.
+- Filters supported by the existing catalogue.
+
+## 8.2 Categories
+
+Use categories such as:
+- All.
+- Upcoming.
+- Major festivals.
+- Regional festivals.
+- Vrat and observances.
+
+Expose only categories supported by the existing data.
+
+Do not invent metadata to populate filters.
+
+## 8.3 Editorial discovery
+
+Use a mixture of:
+- One prominent featured item when appropriate.
+- Compact image-led rows.
+- Strong festival-name typography.
+- Readable dates.
+- A restrained favourite control.
+
+Avoid making every item a large card.
+
+## 8.4 Behaviour
+
+Search, filters, sorting, and favourites must work against actual data.
+
+Keep the experience responsive.
+
+Support empty search results and empty categories gracefully.
+
+---
+
+# 9. SCREEN 4 — PANCHANG
+
+Make Panchang the most precise and trust-focused screen.
+
+It should feel modern and analytical while remaining culturally appropriate.
+
+## 9.1 Header
+
+Display:
+- Panchang title.
+- Selected city.
+- Selected date.
+- Today shortcut.
+- Existing muhurat access, where supported.
+
+Make location and date changes easy to discover.
+
+## 9.2 Sunrise-to-sunset visualization
+
+Create an elegant timeline or horizon visualization driven by actual supported data.
+
+Display:
+- Sunrise.
+- Sunset.
+- Relevant time labels.
+- Tithi transition information when available.
+
+The visualization must reflect real calculated values.
+
+Do not fabricate a sunrise position, transition time, or astronomical relationship for decorative purposes.
+
+If necessary inputs are unavailable, show a clear fallback.
+
+## 9.3 Panchang details
+
+Display the supported values in a readable structured layout:
+- Tithi.
+- Nakshatra.
+- Yoga.
+- Karana.
+- Sunrise.
+- Sunset.
+- Other fields already supported by the application.
+
+Use clear labels, consistent time formatting, and appropriate unavailable states.
+
+## 9.4 Muhurat
+
+Use the existing validation model.
+
+The UI must clearly distinguish:
+
+**Verified:** The existing model identifies the timing as verified.
+
+**Calculated estimate:** The timing is an estimate and must not be presented as independently verified.
+
+**Unavailable:** No usable timing is available.
+
+Do not change validation semantics to improve visual appearance.
+
+Do not invent new muhurat rules.
+
+## 9.5 Planetary positions
+
+If the existing engine supports planetary positions, present them in a readable structured list or restrained visualization.
+
+Do not fabricate missing positions.
+
+Do not introduce a decorative planetary chart that implies unsupported precision.
+
+## 9.6 Date and location changes
+
+Changing the date or location must refresh the relevant data using the existing application logic.
+
+Do not show stale values while implying they belong to the newly selected date or city.
+
+---
+
+# 10. SCREEN 5 — FESTIVAL DETAILS
+
+Make Festival Details an immersive, editorial, action-oriented experience.
+
+## 10.1 Hero
+
+Display:
+- Appropriate festival artwork.
+- Festival name.
+- Actual observance date.
+- Relevant observance information.
+- Favourite and share actions.
+
+Use overlays only as needed for contrast.
+
+## 10.2 Section navigation
+
+Provide compact navigation for the existing content:
+- Overview.
+- Puja Vidhi.
+- Samagri.
+- Panchang.
+
+Keep it usable on narrow screens.
+
+Do not create separate product modules.
+
+## 10.3 Overview
+
+Display the existing festival description and supported metadata.
+
+Do not fabricate historical explanations, religious claims, or regional practices.
+
+## 10.4 Puja Vidhi
+
+Present existing instructions in readable steps.
+
+Where available, use appropriate associated images.
+
+Provide clear hierarchy and comfortable line spacing.
+
+Do not replace existing instructions with static placeholder content.
+
+## 10.5 Samagri checklist
+
+Create a functional checklist based on the existing festival-specific data.
+
+Requirements:
+- Mark items complete or incomplete.
+- Preserve checklist state through the appropriate existing persistence mechanism.
+- Present items clearly.
+- Support empty and unavailable states.
+- Avoid decorative interactions that do not update actual state.
+
+## 10.6 Relevant Panchang and timings
+
+Show applicable information for the selected festival, date, and location.
+
+Respect the validation state of every timing.
+
+Do not present unverified timings as authoritative.
+
+## 10.7 Actions
+
+Provide working actions for:
+- Set Reminder.
+- Share.
+- Existing supported calendar actions.
+
+Preserve the existing reminder and sharing implementations.
+
+Do not add unrelated features.
+
+---
+
+# 11. SCREEN 6 — PROFILE
+
+Preserve the existing Profile tab and its role.
+
+Improve the presentation of existing settings:
+- Selected location.
+- Reminder preferences.
+- Supported language preferences.
+- Existing appearance preferences.
+- Other existing app settings.
+
+Do not introduce mandatory accounts or unrelated configuration.
+
+Ensure changes persist using the existing persistence architecture.
+
+Do not expose settings that do not work.
+
+---
+
+# 12. MOTION AND DYNAMIC INTERACTIONS
+
+Use restrained motion to make the experience feel polished.
+
+Where appropriate:
+- Transition the hero when the relevant festival changes.
+- Animate calendar month changes subtly.
+- Provide clear date-selection feedback.
+- Animate checklist completion lightly.
+- Use consistent navigation transitions.
+- Allow supported Panchang timeline interaction.
+
+Requirements:
+- Do not delay essential actions.
+- Avoid continuous expensive animation.
+- Respect reduced-motion preferences where applicable.
+- Preserve state during normal lifecycle events.
+- Avoid animation that compromises the readability of religious or astronomical information.
+
+Motion must reinforce meaning, not distract from it.
+
+---
+
+# 13. LIGHT AND DARK THEMES
+
+Inspect the existing theme implementation first.
+
+If both themes are already supported, improve both.
+
+If completing theme support is feasible without major architectural changes, maintain consistent semantic colours across:
+- Light mode.
+- Dark mode.
+- System theme.
+
+Light mode should use warm reading surfaces.
+
+Dark mode should use deep plum and midnight indigo with sufficient contrast.
+
+Do not make every surface glossy or translucent.
+
+Ensure status bar, navigation bar, icons, and text remain legible.
+
+---
+
+# 14. ACCESSIBILITY AND RESPONSIVENESS
+
+The application must work well on supported Android screen sizes.
+
+Implement or preserve:
+- Readable text.
+- Dynamic font scaling.
+- Adequate touch targets.
+- Accessible contrast.
+- Descriptive labels for interactive controls.
+- Screen-reader semantics.
+- Clear focus states.
+- Responsive layouts.
+- Safe handling of system insets.
+- Reduced-motion support where appropriate.
+
+Avoid clipped dates, truncated festival names, overlapping controls, and inaccessible icon-only actions.
+
+Ensure important information remains readable when font size increases.
+
+---
+
+# 15. OFFLINE-FIRST BEHAVIOUR
+
+Preserve the existing offline-first architecture.
+
+Requirements:
+- Existing bundled catalogue remains available offline.
+- Existing cached data continues to work.
+- Onboarding works offline.
+- Saved location and preferences persist.
+- Existing puja and samagri data remains available according to current storage capabilities.
+- Missing data produces an honest state.
+- No mandatory remote image download is introduced.
+- The application does not depend on network connectivity merely to open its primary screens.
+
+Do not add a new mandatory service or external dependency solely for visual effects.
+
+---
+
+# 16. TECHNICAL IMPLEMENTATION RULES
+
+Use the existing Kotlin and Jetpack Compose architecture.
+
+Before changing files, inspect:
+- Current screens and composables.
+- Navigation.
+- ViewModels and repositories.
+- Domain models.
+- Festival catalogue.
+- Panchang engine and validation model.
+- Theme and design tokens.
+- Room and DataStore usage.
+- Reminder scheduler.
+- Sharing implementation.
+- Existing tests.
+
+Reuse existing components where practical.
+
+Keep business logic outside composables.
+
+Avoid duplicated calculations and competing sources of truth.
+
+Use stable keys for dynamic lists.
+
+Handle loading, empty, unavailable, and error states explicitly.
+
+Preserve:
+- Existing domain models.
+- Festival-date evaluation.
+- Panchang calculations.
+- Validation states.
+- Reminder scheduling.
+- Independent reminder toggles.
+- Native and WhatsApp sharing.
+- Existing persistence.
+- Offline-first behaviour.
+- Existing project configuration and tests.
+
+Do not replace working functionality with mock data.
+
+Do not introduce unnecessary dependencies.
+
+Do not make broad architectural changes when targeted UI changes will suffice.
+
+---
+
+# 17. NO-HARDCODING ACCEPTANCE RULE
+
+The UI may contain:
+- Design tokens.
+- Reusable layout definitions.
+- Static decorative illustrations.
+- Bundled artwork.
+- A central mapping between existing festival identifiers and available artwork.
+
+The UI must not hardcode:
+- Current date.
+- Festival dates.
+- Festival countdowns.
+- Selected city.
+- Panchang values.
+- Sunrise or sunset.
+- Tithi transition times.
+- Muhurat timings.
+- Planetary positions.
+- Reminder state.
+- User preferences.
+- Festival catalogue contents.
+
+These values must be supplied by the correct existing data source, calculation, or application state.
+
+Do not scatter festival-specific conditional logic across composables.
+
+Do not add sample values to production code.
+
+If information is unavailable, show a clear unavailable state instead of fabricated content.
+
+---
+
+# 18. IMPLEMENTATION ORDER
+
+Implement the work directly in the existing project in the following order:
+
+### Phase A — Foundation
+- Inspect existing architecture.
+- Establish or refine shared design tokens.
+- Create reusable UI components.
+- Preserve existing navigation and data flow.
+
+### Phase B — First-launch experience
+- Splash.
+- Welcome.
+- Location setup.
+- Optional preferences.
+- Notification introduction.
+- Onboarding persistence.
+- Returning-user routing.
+
+### Phase C — Primary experience
+- Today.
+- Festival Details.
+- Panchang.
+
+### Phase D — Discovery and settings
+- Calendar.
+- Festivals.
+- Profile.
+
+### Phase E — Quality
+- Responsive layouts.
+- Accessibility.
+- Light and dark theme consistency.
+- Motion refinement.
+- Empty and error states.
+- Regression checks.
+
+Do not stop after proposing this plan. Implement the changes using the existing project.
+
+If a step cannot be completed because a required dependency, data source, or capability is unavailable, document the blocker and continue with independent tasks where safe.
+
+---
+
+# 19. ACCEPTANCE TESTS
+
+Add or update tests where appropriate.
+
+Test the following behaviours:
+
+## Onboarding
+- First launch enters onboarding.
+- Completed onboarding routes directly to Today on subsequent launches.
+- Interrupted onboarding resumes safely.
+- Optional preferences can be skipped.
+- Saved location and preferences persist.
+- Denied location permission does not block manual city selection.
+- Denied notification permission does not block the app.
+
+## Dynamic content
+- Festival countdowns derive from actual dates.
+- Calendar month and selected-date state remain consistent.
+- Festival lists update from the catalogue.
+- Empty catalogues produce honest states.
+- Unknown festival IDs do not receive fabricated dates.
+
+## Panchang
+- Selected city and date remain visible.
+- Missing data produces a clear unavailable state.
+- Validation status is preserved in the UI.
+- Unverified timings are not presented as verified.
+- Changing the selected date does not leave misleading stale content.
+
+## User actions
+- Festival detail navigation works.
+- Reminder actions use the existing scheduler.
+- Independent reminder toggles remain independent.
+- Checklist state persists.
+- Native and WhatsApp sharing continue to work.
+
+## Visual and technical quality
+- Existing navigation remains intact.
+- Dynamic text does not clip.
+- Controls remain accessible.
+- Offline startup remains supported.
+- Existing functionality is not replaced by mock data.
+
+Run the available tests and build or preview workflow where possible.
+
+Report actual execution results. Do not claim a test passed unless it ran and passed.
+
+---
+
+# 20. REQUIRED COMPLETION REPORT
+
+When implementation is complete, provide a concise but specific report containing:
+
+1. Files changed.
+2. Screens implemented.
+3. Reusable components and design tokens created or reused.
+4. First-launch and onboarding behaviour.
+5. Dynamic data sources used by each screen.
+6. Confirmation that live content is not hardcoded.
+7. Confirmation that the five-tab navigation is preserved.
+8. Confirmation that offline behaviour and persistence are preserved.
+9. Confirmation that reminders and sharing remain functional.
+10. Confirmation that Panchang validation states are respected.
+11. Build or preview result.
+12. Tests actually executed and their results.
+13. Remaining defects or blocked checks.
+
+Use the statuses:
+- PASSED.
+- FAILED.
+- BLOCKED.
+- NOT TESTED.
+
+Do not claim successful execution without evidence.
+
+Do not describe a source-code inspection as a successful build or passing test suite.
+
+---
+
+# 21. STRICT STOP CONDITION
+
+Complete Gate 3 only.
+
+Do not start Gate 4.
+
+Do not add unrelated features.
+
+Do not change the core product concept.
+
+Do not redesign the application into a different product.
+
+The final experience must feel like a distinctive, premium Indian cultural companion, with a coherent journey from first launch through everyday festival discovery, Panchang, ritual preparation, reminders, and sharing.
+
+**Preserve UtsavSetu. Improve its experience. Keep all live content data-driven. Do not drift.**
+
+### Before you run it
+
+Use the prompt in your **existing UtsavSetu project**, with the latest source code available to Google AI Studio.
+
+When AI Studio finishes, check that it has actually implemented the splash and onboarding screens, not just the five main tabs. Then share the updated ZIP here. I can review the implementation against this specification and identify incomplete or hardcoded behaviour.
+
+**The scope is now consolidated:** one app, one design system, the complete first-launch journey, all five existing tabs, real data, and no unrelated features.

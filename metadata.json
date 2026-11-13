@@ -1,0 +1,6 @@
+{
+  "name": "UtsavSetu",
+  "description": "Offline-first sacred festival calendar, panchang, muhurat, puja vidhi, and samagri companion for Indian traditions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

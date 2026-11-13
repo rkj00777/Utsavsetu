@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Temple Arch Crown / Kalash & Flag -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,22 L56,26 L52,26 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,26 L58,31 L50,31 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,23 L62,23 L58,27 L54,27 Z" />
+
+    <!-- Ornate Temple Arch Frame -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 C42,28 32,37 32,49 L32,74 L37,74 L37,50 C37,40 45,33 54,33 C63,33 71,40 71,50 L71,74 L76,74 L76,49 C76,37 66,28 54,28 Z" />
+
+    <!-- Arch Pillars & Bases -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,73 L39,73 L39,76 L30,76 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M69,73 L78,73 L78,76 L69,76 Z" />
+
+    <!-- Central Diya Flame -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,36 C50,43 46,49 46,54 C46,59 49,63 54,63 C59,63 62,59 62,54 C62,49 58,43 54,36 Z" />
+
+    <!-- Diya Bowl -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,62 C42,70 48,74 54,74 C60,74 66,70 68,62 C64,65 58,66 54,66 C50,66 44,65 40,62 Z" />
+
+    <!-- Diya Pedestal -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,74 L60,74 L62,77 L46,77 Z" />
+
+    <!-- Panchang / Om Calendar Base Plate -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M43,79 L65,79 L67,86 L41,86 Z" />
+</vector>
