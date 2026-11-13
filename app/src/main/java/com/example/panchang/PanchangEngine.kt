@@ -76,10 +76,17 @@ object PanchangEngine {
 
     private val dayPanchangCache = java.util.concurrent.ConcurrentHashMap<String, PanchangDay>()
 
+    fun clearCache() {
+        dayPanchangCache.clear()
+    }
+
+    fun getCacheSize(): Int = dayPanchangCache.size
+
     fun computeDayPanchang(date: LocalDate, city: City): PanchangDay {
         val cacheKey = "${date}_${city.id}"
         dayPanchangCache[cacheKey]?.let { return it }
 
+        val startNanos = System.nanoTime()
         val tzOffsetHours = getTimezoneOffsetHours(date, city.timeZoneId)
         val (sunrise, sunset) = calculateSunriseSunset(date, city.latitude, city.longitude, tzOffsetHours)
 
@@ -225,6 +232,8 @@ object PanchangEngine {
             gulikaKaal = gulikaKaal,
             isAdhikaMasa = isAdhika
         )
+        val durationNanos = System.nanoTime() - startNanos
+        com.example.platform.monitoring.AppPerformanceMonitor.recordExecution("PanchangEngine.computeDayPanchang", durationNanos)
         dayPanchangCache[cacheKey] = result
         return result
     }

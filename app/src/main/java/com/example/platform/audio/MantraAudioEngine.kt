@@ -13,6 +13,8 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import com.example.domain.FestivalPujaMantra
+import com.example.platform.monitoring.AppBatteryMonitor
+import com.example.platform.monitoring.AppCrashMonitor
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -651,8 +653,13 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 val stringFreqs = doubleArrayOf(207.65, 277.18, 277.62, 138.59)
                 val pluckIntervalSec = 1.25
                 val tanpuraCycleSec = pluckIntervalSec * 4.0
-                // Warm first 4 harmonics only (no harsh high-frequency buzz that competes with speech)
-                val harmonicWeights = doubleArrayOf(0.38, 0.30, 0.16, 0.08)
+                // Adaptive Tanpura harmonics: 2 harmonics in battery saver mode to cut DSP overhead by 50%
+                val isLowPower = AppBatteryMonitor.isLowPowerModeActive(appContext)
+                val harmonicWeights = if (isLowPower) {
+                    doubleArrayOf(0.45, 0.25)
+                } else {
+                    doubleArrayOf(0.38, 0.30, 0.16, 0.08)
+                }
 
                 // --- TABLA BHAJAN KEHERWA THEKA (8 Matras: Dha - Ge - Na - Ti | Na - Ka - Dhi - Na) ---
                 val matraDurationSec = 0.40
@@ -772,7 +779,8 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
                     track.write(pcmBuffer, 0, pcmBuffer.size)
                 }
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                AppCrashMonitor.recordHandledException("MantraAudioEngine", t)
                 instrumentTrack = null
             } finally {
                 try {

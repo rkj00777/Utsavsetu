@@ -2,6 +2,8 @@ package com.example
 
 import android.app.Application
 import com.example.di.AppContainer
+import com.example.platform.monitoring.AppCrashMonitor
+import com.example.platform.monitoring.AppPerformanceMonitor
 import com.example.platform.notifications.ReminderScheduler
 import com.example.platform.security.SecurityIntegrityManager
 import com.google.firebase.FirebaseApp
@@ -14,6 +16,11 @@ class UtsavSetuApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 1. Install Crash & Performance Monitoring as early as possible
+        AppCrashMonitor.install(this)
+        AppPerformanceMonitor.install(this)
+        AppCrashMonitor.recordBreadcrumb("Lifecycle", "Application onCreate started")
+
         SecurityIntegrityManager.auditAppSecurity(this)
         runCatching { FirebaseApp.initializeApp(this) }
         runCatching {
@@ -26,9 +33,23 @@ class UtsavSetuApplication : Application() {
         appContainer = AppContainer(this)
         ReminderScheduler.createNotificationChannel(this)
 
-        // Preload catalog into database
+        // Preload catalog into database with performance profiling
         appContainer.applicationScope.launch {
-            appContainer.festivalRepository.ensureCatalogLoaded()
+            AppPerformanceMonitor.measure("FestivalRepository.ensureCatalogLoaded") {
+                appContainer.festivalRepository.ensureCatalogLoaded()
+            }
+            AppCrashMonitor.recordBreadcrumb("Catalog", "Festival catalog preload completed")
         }
+        AppCrashMonitor.recordBreadcrumb("Lifecycle", "Application onCreate completed")
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        AppPerformanceMonitor.onTrimMemory(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        AppPerformanceMonitor.onLowMemory()
     }
 }

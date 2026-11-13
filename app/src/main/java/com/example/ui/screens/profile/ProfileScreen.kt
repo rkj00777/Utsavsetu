@@ -37,6 +37,7 @@ import com.example.ui.components.CitySelectionDialog
 import com.example.ui.components.FestivalArtworkBanner
 import com.example.ui.components.LiquidGlassSurface
 import com.example.ui.components.ReminderCentreDialog
+import com.example.ui.components.SystemHealthDialog
 import com.example.ui.components.TraditionChip
 import com.example.ui.theme.LocalLiquidGlassTokens
 import com.example.ui.theme.LocalUtsavStrings
@@ -65,6 +66,7 @@ fun ProfileScreen(
     var showReminderCentre by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var showAboutPanchangDialog by remember { mutableStateOf(false) }
+    var showSystemHealthDialog by remember { mutableStateOf(false) }
     val strings = com.example.ui.theme.LocalUtsavStrings.current
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -157,6 +159,12 @@ fun ProfileScreen(
                     Text(strings.hideDetailsLabel, fontWeight = FontWeight.Bold)
                 }
             }
+        )
+    }
+
+    if (showSystemHealthDialog) {
+        SystemHealthDialog(
+            onDismiss = { showSystemHealthDialog = false }
         )
     }
 
@@ -810,6 +818,18 @@ fun ProfileScreen(
                         Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(strings.aboutSectionHeader, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+
+                    OutlinedButton(
+                        onClick = { showSystemHealthDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("system_health_diagnostics_button"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.HealthAndSafety, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("System Health & Diagnostics", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
 
                     OutlinedButton(
