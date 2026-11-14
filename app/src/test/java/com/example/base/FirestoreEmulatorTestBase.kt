@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [35])
 abstract class FirestoreEmulatorTestBase {
 
     lateinit var firestore: FirebaseFirestore

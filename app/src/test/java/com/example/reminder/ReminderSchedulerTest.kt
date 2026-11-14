@@ -23,7 +23,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [35])
 class ReminderSchedulerTest {
 
     private lateinit var context: Context
