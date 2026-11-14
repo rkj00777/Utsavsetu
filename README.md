@@ -13,9 +13,9 @@
 
 ## Overview
 
-UtsavSetu brings Indian festival discovery and daily Panchang information together with practical puja preparation tools. The application is designed to keep core festival content and artwork available locally on the device.
+UtsavSetu brings Indian festival discovery and daily Panchang information together with practical puja preparation tools. Core festival content and artwork are intended to remain available locally on the device.
 
-### Current application areas
+### Application areas
 
 - **Today** — daily festival and Panchang overview.
 - **Calendar** — festival dates in calendar and agenda views.
@@ -25,39 +25,62 @@ UtsavSetu brings Indian festival discovery and daily Panchang information togeth
 - **Reminders** — scheduled observance notifications.
 - **Preferences** — location, language and application settings.
 
-The codebase also includes local persistence (Room and DataStore), optional Firebase-related integrations, and locally bundled festival artwork. Feature availability may depend on configuration and device permissions.
+The codebase includes local persistence (Room and DataStore) and optional Firebase-related integrations. Feature availability may depend on configuration and device permissions.
 
-## Download
+## Downloads
 
-### Latest GitHub Release
+### Test builds
 
-Once a versioned release has been published, download the APK here:
-
-**[Download latest UtsavSetu APK](https://github.com/rkj00777/Utsavsetu/releases/latest/download/UtsavSetu.apk)**
-
-The release page also includes an Android App Bundle (AAB), where available:
-
-**[View all releases](https://github.com/rkj00777/Utsavsetu/releases)**
-
-### Download a build from GitHub Actions
-
-Every successful build workflow uploads APK and AAB files as workflow artifacts:
+Every successful build on `main` uploads debug APK/AAB artifacts:
 
 1. Open [Actions → Android build](https://github.com/rkj00777/Utsavsetu/actions/workflows/android-build.yml).
-2. Select the latest successful run on the `main` branch.
-3. Scroll to **Artifacts**.
-4. Download `UtsavSetu-APK` or `UtsavSetu-AAB`.
+2. Select a successful run on `main`.
+3. Download `UtsavSetu-debug-APK` to install on a test device, or `UtsavSetu-debug-AAB` for bundle inspection.
+4. Verify the matching SHA-256 checksum artifact.
 
-Workflow artifacts are retained for a limited period (configured in the workflow). Versioned GitHub Releases are the durable download location.
+Workflow artifacts are temporary and currently retained for 30 days. Debug builds are for testing only and are not production Play Store releases.
 
-> **Important — testing builds:** The automated workflow currently produces debug-variant APK/AAB files signed with a temporary debug key. These are for development and testing, not Play Store production publication. A production release must be built and signed with the app owner's private upload/release keystore. Never commit that keystore or its passwords to this repository.
+### Production releases
+
+The [GitHub Releases page](https://github.com/rkj00777/Utsavsetu/releases) is the durable distribution location. A versioned release is published only when a `v*` tag is built with all production signing secrets configured. It contains:
+
+- `UtsavSetu-release.apk` — signed APK for direct installation/testing.
+- `UtsavSetu-release.aab` — signed Android App Bundle for Play Console upload.
+- `SHA256SUMS.txt` — integrity checksums.
+
+The workflow deliberately does **not** publish debug-signed packages as production releases. If signing secrets are missing, the tag run warns and skips production release publication.
+
+## Configure production signing (repository owner)
+
+The Android release signing configuration in `app/build.gradle.kts` uses keystore alias `upload` and reads the keystore path and passwords from environment variables.
+
+1. Create and securely back up the Android upload keystore locally. Keep the keystore and passwords private; never commit them or send them in chat.
+2. Base64-encode the keystore file locally. For example, on macOS/Linux:
+   ```bash
+   base64 -w 0 my-upload-key.jks > keystore.base64.txt
+   ```
+   On macOS, if `-w` is unsupported, use `base64 my-upload-key.jks | tr -d '\\n' > keystore.base64.txt`.
+3. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret** and add:
+   - `KEYSTORE_BASE64`: the complete Base64 text from the local file.
+   - `STORE_PASSWORD`: keystore password.
+   - `KEY_PASSWORD`: private-key password for alias `upload`.
+4. Delete the temporary Base64 text file securely after configuring the secret. Retain the original keystore and recovery copy in a secure password manager/offline backup.
+5. Confirm the app's `versionCode` is incremented and `versionName` is correct in `app/build.gradle.kts` before tagging.
+6. Push a version tag only after tests and device QA pass, for example:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+7. Confirm the tag workflow builds the release variant and that the GitHub Release contains the release APK, AAB and checksums. Verify the signing certificate and checksums before distribution.
+
+**Important:** Keep the upload keystore backed up. Losing it can complicate future app updates. For Google Play App Signing, follow Play Console's upload-key/app-signing-key setup and use the upload key expected by that Play Console app.
 
 ## Build locally
 
 ### Requirements
 
 - Android Studio with Android SDK support for API 36
-- JDK 17 or the JDK version required by the configured Android Gradle Plugin
+- JDK 17
 - Internet access for the first dependency and Gradle distribution download
 
 ### Build and test
@@ -78,16 +101,16 @@ gradlew.bat assembleDebug
 gradlew.bat bundleDebug
 ```
 
-Expected outputs:
+Expected debug outputs:
 
 - APK: `app/build/outputs/apk/debug/app-debug.apk`
 - AAB: `app/build/outputs/bundle/debug/app-debug.aab`
 
-The debug signing configuration in this repository expects `debug.keystore` at the project root. If it is absent, Android Studio/CI setup must create a compatible debug keystore before building.
+The debug signing configuration expects `debug.keystore` at the project root. CI generates a disposable debug key automatically.
 
 ## OBB / expansion files
 
-UtsavSetu does **not** currently require an OBB expansion file. Its festival artwork and other bundled resources are packaged with the application. Android App Bundles (AABs) are the preferred Play distribution format; creating an empty or artificial `.obb` file would not add functionality and must not be presented as a valid app expansion. Only introduce Play APK Expansion Files if the app later has a genuine large-asset delivery requirement and the corresponding runtime download/validation code is implemented.
+UtsavSetu does **not** currently require an OBB expansion file. Festival artwork and other bundled resources are packaged with the application. Android App Bundles are the preferred Play distribution format; an empty or artificial `.obb` file would not add functionality. Only introduce expansion files if there is a genuine large-asset delivery requirement and corresponding runtime download/validation code.
 
 ## Technology
 
@@ -111,9 +134,9 @@ firestore.rules   Firestore security rules
 ## Configuration and security
 
 - Do not commit `.env`, Firebase service-account credentials, signing keystores, signing passwords, or private API keys.
-- Use GitHub Actions secrets for CI-only credentials.
+- Use GitHub Actions secrets for CI signing credentials.
 - Configure Firebase for the exact Android application ID before enabling live cloud features.
-- Replace any development/test advertising configuration with the correct production configuration before distribution.
+- Replace development/test advertising configuration with the correct production configuration before distribution.
 - Review permissions, privacy disclosures and third-party SDK disclosures before publishing.
 
 ## Contributing
