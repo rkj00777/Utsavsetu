@@ -64,10 +64,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run JVM and Robolectric tests
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+        run: bash ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
 
       - name: Build debug APK and App Bundle
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
+        run: bash ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
 
       - name: Stage distributable files
         shell: bash
