@@ -21,6 +21,10 @@ jobs:
     name: Test and build APK / AAB
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -35,16 +39,12 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # The legacy "tools" package was removed from Google's SDK repository.
-          # Install only packages that still exist and match compileSdk 36.
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
 
       - name: Prepare debug signing key
         shell: bash
         run: |
-          # app/build.gradle.kts explicitly points debugConfig at this root file.
-          # Generate a disposable CI-only key; never use it for production signing.
           if [ ! -f debug.keystore ]; then
             keytool -genkeypair -v \
               -keystore debug.keystore \
@@ -69,56 +69,98 @@ jobs:
       - name: Build debug APK and App Bundle
         run: bash ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
 
-      - name: Stage distributable files
+      - name: Stage debug distributables
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          AAB="app/build/outputs/bundle/debug/app-debug.aab"
-          test -s "$APK"
-          test -s "$AAB"
-          cp "$APK" dist/UtsavSetu.apk
-          cp "$AAB" dist/UtsavSetu.aab
-          (cd dist && sha256sum UtsavSetu.apk UtsavSetu.aab > SHA256SUMS.txt)
-          ls -lh dist
+          mkdir -p dist/debug
+          cp app/build/outputs/apk/debug/app-debug.apk dist/debug/UtsavSetu-debug.apk
+          cp app/build/outputs/bundle/debug/app-debug.aab dist/debug/UtsavSetu-debug.aab
+          (cd dist/debug && sha256sum UtsavSetu-debug.apk UtsavSetu-debug.aab > SHA256SUMS.txt)
 
-      - name: Upload APK artifact
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UtsavSetu-APK
-          path: dist/UtsavSetu.apk
+          name: UtsavSetu-debug-APK
+          path: dist/debug/UtsavSetu-debug.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload AAB artifact
+      - name: Upload debug AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UtsavSetu-AAB
-          path: dist/UtsavSetu.aab
+          name: UtsavSetu-debug-AAB
+          path: dist/debug/UtsavSetu-debug.aab
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload checksums
+      - name: Upload debug checksums
         uses: actions/upload-artifact@v4
         with:
-          name: UtsavSetu-SHA256
-          path: dist/SHA256SUMS.txt
+          name: UtsavSetu-debug-SHA256
+          path: dist/debug/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish versioned GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Prepare production signing keystore
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/my-upload-key.jks"
+          test -s "$GITHUB_WORKSPACE/my-upload-key.jks"
+          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> "$GITHUB_ENV"
+
+      - name: Build production-signed APK and App Bundle
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
+        run: bash ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
+
+      - name: Stage production release files
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          cp app/build/outputs/apk/release/app-release.apk dist/release/UtsavSetu-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab dist/release/UtsavSetu-release.aab
+          (cd dist/release && sha256sum UtsavSetu-release.apk UtsavSetu-release.aab > SHA256SUMS.txt)
+
+      - name: Upload production APK artifact
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: UtsavSetu-release-APK
+          path: dist/release/UtsavSetu-release.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload production AAB artifact
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: UtsavSetu-release-AAB
+          path: dist/release/UtsavSetu-release.aab
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish production-signed GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
         uses: softprops/action-gh-release@v2
         with:
           name: UtsavSetu ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            dist/UtsavSetu.apk
-            dist/UtsavSetu.aab
-            dist/SHA256SUMS.txt
+            dist/release/UtsavSetu-release.apk
+            dist/release/UtsavSetu-release.aab
+            dist/release/SHA256SUMS.txt
           body: |
-            Automated UtsavSetu debug/test build for ${{ github.ref_name }}.
+            Production-signed UtsavSetu Android release for ${{ github.ref_name }}.
 
-            These files are signed with a temporary CI debug certificate and are intended for testing.
-            They are not production Play Store-signed deliverables.
+            APK is provided for direct installation/testing. AAB is the Play Console upload package.
+            Verify SHA256SUMS.txt before distribution.
+
+      - name: Explain skipped production release
+        if: startsWith(github.ref, 'refs/tags/v') && (env.KEYSTORE_BASE64 == '' || env.STORE_PASSWORD == '' || env.KEY_PASSWORD == '')
+        run: |
+          echo "::warning::Production release was not published because one or more signing secrets are missing."
+          echo "Configure KEYSTORE_BASE64, STORE_PASSWORD and KEY_PASSWORD in repository Actions secrets, then rerun the tag workflow."
