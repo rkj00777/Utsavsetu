@@ -1,0 +1,119 @@
+name: Android build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and build APK / AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prepare debug signing key
+        shell: bash
+        run: |
+          # app/build.gradle.kts explicitly points debugConfig at this root file.
+          # Generate a disposable CI-only key; never use it for production signing.
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=UtsavSetu CI Debug,O=Development,C=IN"
+          fi
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run JVM and Robolectric tests
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+
+      - name: Build debug APK and App Bundle
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
+
+      - name: Stage distributable files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          AAB="app/build/outputs/bundle/debug/app-debug.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          cp "$APK" dist/UtsavSetu.apk
+          cp "$AAB" dist/UtsavSetu.aab
+          (cd dist && sha256sum UtsavSetu.apk UtsavSetu.aab > SHA256SUMS.txt)
+          ls -lh dist
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UtsavSetu-APK
+          path: dist/UtsavSetu.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UtsavSetu-AAB
+          path: dist/UtsavSetu.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: UtsavSetu-SHA256
+          path: dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish versioned GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: UtsavSetu ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/UtsavSetu.apk
+            dist/UtsavSetu.aab
+            dist/SHA256SUMS.txt
+          body: |
+            Automated UtsavSetu debug/test build for ${{ github.ref_name }}.
+
+            These files are signed with a temporary CI debug certificate and are intended for testing.
+            They are not production Play Store-signed deliverables.
