@@ -108,7 +108,13 @@ data class PanchangDay(
     val brahmaMuhurat: TimeWindow = TimeWindow(270, 318),
     val yamagandam: TimeWindow = TimeWindow(450, 540),
     val gulikaKaal: TimeWindow = TimeWindow(540, 630),
-    val isAdhikaMasa: Boolean = false
+    val isAdhikaMasa: Boolean = false,
+    val sunRashi: String = "",
+    val moonRashi: String = "",
+    val shakaSamvat: Int = 0,
+    val vikramSamvat: Int = 0,
+    val dishaShool: String = "",
+    val regionalSolarMonth: String? = null
 ) {
     val dayOfWeek: String = date.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
 
@@ -120,3 +126,4 @@ data class PanchangDay(
         return if (isAdhikaMasa) "Adhika $base" else base
     }
 }
+

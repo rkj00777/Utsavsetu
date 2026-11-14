@@ -24,8 +24,8 @@ enum class CalendarCategoryFilter(val label: String) {
 }
 
 data class CalendarUiState(
-    val currentMonth: YearMonth = YearMonth.now(),
-    val selectedDate: LocalDate = LocalDate.now(),
+    val currentMonth: YearMonth = YearMonth.from(PanchangEngine.localDateForCity(City.DELHI)),
+    val selectedDate: LocalDate = PanchangEngine.localDateForCity(City.DELHI),
     val selectedDayPanchang: PanchangDay? = null,
     val isListView: Boolean = false,
     val activeCategoryFilter: CalendarCategoryFilter = CalendarCategoryFilter.ALL,
@@ -47,6 +47,7 @@ class CalendarViewModel(
 
     private var cachedYearKey: String? = null
     private var cachedYearOccurrences: List<FestivalOccurrence> = emptyList()
+    private var hasUserChangedDate = false
 
     init {
         observeData()
@@ -54,8 +55,19 @@ class CalendarViewModel(
 
     private fun observeData() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
+            val initialCity = withContext(Dispatchers.IO) {
                 festivalRepository.ensureCatalogLoaded()
+                userPreferencesRepository.userPreferencesFlow.first().hostCity
+            }
+            if (!hasUserChangedDate) {
+                val cityToday = PanchangEngine.localDateForCity(initialCity)
+                _uiState.update {
+                    it.copy(
+                        currentMonth = YearMonth.from(cityToday),
+                        selectedDate = cityToday,
+                        hostCity = initialCity
+                    )
+                }
             }
             combine(
                 userPreferencesRepository.userPreferencesFlow,
@@ -203,6 +215,7 @@ class CalendarViewModel(
     }
 
     fun selectDate(date: LocalDate) {
+        hasUserChangedDate = true
         val city = _uiState.value.hostCity
         val targetMonth = YearMonth.from(date)
         _uiState.update {
@@ -218,7 +231,8 @@ class CalendarViewModel(
     }
 
     fun jumpToToday() {
-        val today = LocalDate.now()
+        hasUserChangedDate = true
+        val today = PanchangEngine.localDateForCity(_uiState.value.hostCity)
         selectYearMonth(YearMonth.from(today), preferredDay = today.dayOfMonth)
     }
 
@@ -256,6 +270,7 @@ class CalendarViewModel(
     }
 
     fun selectYearMonth(targetMonth: YearMonth, preferredDay: Int? = null) {
+        hasUserChangedDate = true
         val current = _uiState.value
         val sameYearOccurrences = if (current.currentMonth.year == targetMonth.year) {
             current.allYearOccurrences.filter {

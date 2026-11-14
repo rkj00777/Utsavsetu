@@ -136,12 +136,15 @@ fun DetailScreen(
         festival.samagriItems.map { UtsavLocalizationEngine.localizeSamagriItem(it, strings.language) }
     }
 
-    val resolvedDate = state.resolvedDate ?: LocalDate.now()
+    val cityToday = remember(state.hostCity.id) {
+        com.example.panchang.PanchangEngine.localDateForCity(state.hostCity)
+    }
+    val resolvedDate = state.resolvedDate ?: cityToday
     val formattedDate = remember(resolvedDate, strings.language) {
         UtsavLocalizationEngine.formatDate(resolvedDate, "EEEE, d MMMM yyyy", strings.language)
     }
-    val daysAway = remember(resolvedDate) {
-        ChronoUnit.DAYS.between(LocalDate.now(), resolvedDate)
+    val daysAway = remember(resolvedDate, cityToday) {
+        ChronoUnit.DAYS.between(cityToday, resolvedDate)
     }
 
     val checkedIds = state.samagriProgress?.checkedItemIds ?: emptySet()

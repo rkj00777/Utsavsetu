@@ -390,6 +390,7 @@ fun FestivalsScreen(
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                         FestivalCard(
                             occurrence = occurrence,
+                            referenceDate = com.example.panchang.PanchangEngine.localDateForCity(state.hostCity),
                             matchedRegionalName = matchedAlias,
                             onClick = { onNavigateToFestival(occurrence.festival.id) },
                             onShareClick = { shareTargetOccurrence = occurrence }
@@ -518,6 +519,7 @@ fun FestivalsScreen(
                         Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                             FestivalCard(
                                 occurrence = occurrence,
+                                referenceDate = com.example.panchang.PanchangEngine.localDateForCity(state.hostCity),
                                 onClick = { onNavigateToFestival(occurrence.festival.id) },
                                 onShareClick = { shareTargetOccurrence = occurrence }
                             )

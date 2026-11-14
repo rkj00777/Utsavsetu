@@ -17,6 +17,7 @@ import java.time.temporal.ChronoUnit
 
 data class TodayUiState(
     val isLoading: Boolean = true,
+    val todayDate: LocalDate = PanchangEngine.localDateForCity(City.DELHI),
     val panchang: PanchangDay? = null,
     val userPreferences: UserPreferences? = null,
     val todaysFestivals: List<FestivalOccurrence> = emptyList(),
@@ -32,10 +33,13 @@ class TodayViewModel(
     private val userPreferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
+    private val initialToday = PanchangEngine.localDateForCity(City.DELHI)
+
     private val _uiState = MutableStateFlow(
         TodayUiState(
             isLoading = false,
-            panchang = PanchangEngine.computeDayPanchang(LocalDate.now(), City.DELHI),
+            todayDate = initialToday,
+            panchang = PanchangEngine.computeDayPanchang(initialToday, City.DELHI),
             userPreferences = UserPreferences(hostCity = City.DELHI)
         )
     )
@@ -55,8 +59,8 @@ class TodayViewModel(
                     userPreferencesRepository.userPreferencesFlow,
                     festivalRepository.getAllFestivals()
                 ) { prefs, festivals ->
-                    val today = LocalDate.now()
                     val city = prefs.hostCity
+                    val today = PanchangEngine.localDateForCity(city)
                     val panchang = PanchangEngine.computeDayPanchang(today, city)
 
                     val filteredFestivals = festivals.filter { fest ->
@@ -87,6 +91,7 @@ class TodayViewModel(
 
                     TodayUiState(
                         isLoading = false,
+                        todayDate = today,
                         panchang = panchang,
                         userPreferences = prefs,
                         todaysFestivals = todaysList,

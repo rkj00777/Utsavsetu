@@ -754,5 +754,78 @@ class PanchangAstronomicalAuditTest {
         assertTrue("New York sunrise must be valid LocalTime", nyPanchang.sunrise.hour in 4..7)
         assertTrue("New York sunset must be valid LocalTime", nyPanchang.sunset.hour in 19..21)
     }
-}
 
+    @Test
+    fun testMumbaiNov142026AndAllRegionsAudit() {
+        val nov14 = LocalDate.of(2026, 11, 14)
+        val mumbai = PanchangEngine.computeDayPanchang(nov14, City.MUMBAI)
+
+        // 1. Mumbai Nov 14, 2026 (Saturday / Shaniwara) vs Drik Panchang
+        assertEquals("Saturday", mumbai.dayOfWeek)
+        assertEquals("06:45 AM", mumbai.formattedSunrise())
+        assertEquals("06:00 PM", mumbai.formattedSunset())
+        assertEquals(Paksha.SHUKLA, mumbai.tithi.paksha)
+        assertEquals("Panchami", mumbai.tithi.name)
+        assertNotNull(mumbai.tithi.endTime)
+        assertTrue("Tithi end time should be ~11:24-11:26 PM (was ${mumbai.tithi.endTime})",
+            mumbai.tithi.endTime!!.startsWith("11:2") && mumbai.tithi.endTime!!.endsWith("PM"))
+        assertEquals("Purva Ashadha", mumbai.nakshatra.name)
+        assertTrue("Nakshatra end time should be ~08:24-08:25 PM (was ${mumbai.nakshatra.endTime})",
+            mumbai.nakshatra.endTime!!.startsWith("08:2") && mumbai.nakshatra.endTime!!.endsWith("PM"))
+        assertEquals("Shula", mumbai.yoga.name)
+        assertEquals("Bava", mumbai.karana.name)
+        assertEquals("Kartika", mumbai.amantaMonth)
+        assertEquals("Kartika", mumbai.purnimantaMonth)
+        assertEquals(1948, mumbai.shakaSamvat)
+        assertEquals(2083, mumbai.vikramSamvat)
+        assertTrue("Sun should be in Tula (was ${mumbai.sunRashi})", mumbai.sunRashi.startsWith("Tula"))
+        assertTrue("Moon should be in Dhanu (was ${mumbai.moonRashi})", mumbai.moonRashi.startsWith("Dhanu"))
+        assertEquals("East", mumbai.dishaShool)
+        assertEquals("05:03 AM - 05:54 AM", mumbai.brahmaMuhurat.format())
+        assertEquals("12:00 PM - 12:45 PM", mumbai.abhijitMuhurat?.format())
+        assertEquals("09:34 AM - 10:58 AM", mumbai.rahuKaal.format())
+        // Gulika 06:45-08:09/08:10 AM (±1 min rounding tolerance)
+        assertTrue("Gulika Kaal should be ~06:45 AM - 08:09/08:10 AM (was ${mumbai.gulikaKaal.format()})",
+            mumbai.gulikaKaal.startMinutes == 6 * 60 + 45 && abs(mumbai.gulikaKaal.endMinutes - (8 * 60 + 10)) <= 1)
+        // Yamaganda 01:47 PM - 03:11/03:12 PM (±1 min rounding tolerance)
+        assertTrue("Yamagandam should be ~01:47 PM - 03:11/03:12 PM (was ${mumbai.yamagandam.format()})",
+            mumbai.yamagandam.startMinutes == 13 * 60 + 47 && abs(mumbai.yamagandam.endMinutes - (15 * 60 + 12)) <= 1)
+
+        // 2. All 8 RegionalPanchangConvention regions
+        val delhi = PanchangEngine.computeDayPanchang(nov14, City.DELHI)
+        val bengaluru = PanchangEngine.computeDayPanchang(nov14, City.BENGALURU)
+        val chennai = PanchangEngine.computeDayPanchang(nov14, City.CHENNAI)
+        val kochi = PanchangEngine.computeDayPanchang(nov14, City.KOCHI)
+        val kolkata = PanchangEngine.computeDayPanchang(nov14, City.KOLKATA)
+        val puri = PanchangEngine.computeDayPanchang(nov14, City.PURI)
+        val newYork = PanchangEngine.computeDayPanchang(nov14, City.NEW_YORK)
+        val londonSummer = PanchangEngine.computeDayPanchang(LocalDate.of(2026, 6, 21), City.LONDON)
+
+        assertEquals(null, delhi.regionalSolarMonth)
+        assertEquals(null, mumbai.regionalSolarMonth)
+        assertEquals(null, bengaluru.regionalSolarMonth)
+        assertTrue("Chennai Tamil Solar month for Tula Rashi must be Aippasi",
+            chennai.regionalSolarMonth?.startsWith("Aippasi") == true)
+        assertTrue("Kochi Malayalam Solar month for Tula Rashi must be Thulam",
+            kochi.regionalSolarMonth?.startsWith("Thulam") == true)
+        assertTrue("Kolkata Bengali Solar month for Tula Rashi must be Kartik",
+            kolkata.regionalSolarMonth?.startsWith("Kartik") == true)
+        assertTrue("Puri Odia Solar month for Tula Rashi must be Kartika",
+            puri.regionalSolarMonth?.startsWith("Kartika") == true)
+
+        // Longitude progression across India: Kolkata (88.36°E) sunrise precedes Mumbai (72.88°E)
+        assertTrue("Kolkata sunrise must precede Mumbai sunrise",
+            kolkata.sunrise.isBefore(mumbai.sunrise))
+        // International Diaspora: London June 21 sunset (~9:21 PM BST) must not be clipped at 9:00 PM
+        assertTrue("London summer sunset must exceed 21:00 (was ${londonSummer.sunset})",
+            londonSummer.sunset.hour >= 21 && londonSummer.sunset.minute > 0)
+        // New York Nov 14 local Panchang computes cleanly in America/New_York
+        assertTrue("New York Nov 14 sunrise must be in 06:00-07:30 range",
+            newYork.sunrise.hour == 6 && newYork.sunrise.minute in 20..59)
+        // City-timezone LocalDate helper must match ZoneId directly
+        assertEquals(
+            LocalDate.now(java.time.ZoneId.of(City.MUMBAI.timeZoneId)),
+            PanchangEngine.localDateForCity(City.MUMBAI)
+        )
+    }
+}

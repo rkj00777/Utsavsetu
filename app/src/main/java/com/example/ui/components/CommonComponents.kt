@@ -440,12 +440,16 @@ fun PanchangStrip(
                     color = glassTokens.solidElevatedContainer,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
                 ) {
+                    val baseLunar = if (panchang.amantaMonth == panchang.purnimantaMonth) {
+                        localizedAmanta
+                    } else {
+                        "$localizedAmanta / $localizedPurnimanta"
+                    }
+                    val monthBadgeText = panchang.regionalSolarMonth?.let {
+                        "$baseLunar · ${it.substringBefore(" (")}"
+                    } ?: baseLunar
                     Text(
-                        text = if (panchang.amantaMonth == panchang.purnimantaMonth) {
-                            localizedAmanta
-                        } else {
-                            "$localizedAmanta / $localizedPurnimanta"
-                        },
+                        text = monthBadgeText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -859,7 +863,8 @@ fun FestivalCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     matchedRegionalName: String? = null,
-    onShareClick: (() -> Unit)? = null
+    onShareClick: (() -> Unit)? = null,
+    referenceDate: LocalDate = LocalDate.now()
 ) {
     val glassTokens = LocalLiquidGlassTokens.current
     val strings = LocalUtsavStrings.current
@@ -868,7 +873,7 @@ fun FestivalCard(
     val localizedSignificance = UtsavLocalizationEngine.localizeSignificance(festival, strings.language)
     val regionalSummary = UtsavLocalizationEngine.localizeRegionalSummary(festival, strings.language)
     val dateStr = UtsavLocalizationEngine.formatDate(occurrence.date, "EEE, d MMM yyyy", strings.language)
-    val daysDiff = ChronoUnit.DAYS.between(LocalDate.now(), occurrence.date)
+    val daysDiff = ChronoUnit.DAYS.between(referenceDate, occurrence.date)
     val countdownLabel = when {
         daysDiff == 0L -> strings.todayBadge
         daysDiff == 1L -> strings.tomorrowBadge

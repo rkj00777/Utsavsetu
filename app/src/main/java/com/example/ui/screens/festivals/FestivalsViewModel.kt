@@ -76,9 +76,9 @@ class FestivalsViewModel(
                 categoryFlow,
                 filterFlow
             ) { prefs, allFestivals, query, category, filter ->
-                val today = LocalDate.now()
-                val currentYear = today.year
                 val city = prefs.hostCity
+                val today = com.example.panchang.PanchangEngine.localDateForCity(city)
+                val currentYear = today.year
                 val savedIds = prefs.savedFestivalIds
 
                 val traditionFiltered = if (filter != null) {

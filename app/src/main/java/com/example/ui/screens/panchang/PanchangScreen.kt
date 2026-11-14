@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.panchang.City
 import com.example.panchang.FestivalDateEvaluator
+import com.example.panchang.PanchangEngine
 import com.example.ui.components.AnimatedCollapsibleSection
 import com.example.ui.components.CitySelectionDialog
 import com.example.ui.components.LiquidGlassSurface
@@ -54,7 +55,7 @@ fun PanchangScreen(
     var cityMenuExpanded by remember { mutableStateOf(false) }
     var showDatePickerDialog by remember { mutableStateOf(false) }
 
-    val isToday = state.selectedDate == LocalDate.now()
+    val isToday = state.selectedDate == PanchangEngine.localDateForCity(state.hostCity)
     val formattedDate = remember(state.selectedDate, strings.language) {
         UtsavLocalizationEngine.formatDate(state.selectedDate, "EEEE, d MMMM yyyy", strings.language)
     }
@@ -540,11 +541,61 @@ fun PanchangScreen(
                             panchang.getMonthNameForConvention(com.example.panchang.LunarConvention.PURNIMANTA),
                             strings.language
                         )
-                        PanchangDetailVerticalRow(
-                            label = strings.lunarMonthLabel,
-                            mainValue = "$amantaMonth / $purnimantaMonth",
-                            timingOrContext = "Amanta · Purnimanta"
+                        val solarMonth = panchang.regionalSolarMonth
+                        if (solarMonth != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    PanchangDetailVerticalRow(
+                                        label = strings.lunarMonthLabel,
+                                        mainValue = "$amantaMonth / $purnimantaMonth",
+                                        timingOrContext = "Amanta · Purnimanta"
+                                    )
+                                }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    PanchangDetailVerticalRow(
+                                        label = "Regional Solar",
+                                        mainValue = solarMonth.substringBefore(" ("),
+                                        timingOrContext = solarMonth.substringAfter("(", "").removeSuffix(")")
+                                    )
+                                }
+                            }
+                        } else {
+                            PanchangDetailVerticalRow(
+                                label = strings.lunarMonthLabel,
+                                mainValue = "$amantaMonth / $purnimantaMonth",
+                                timingOrContext = "Amanta · Purnimanta"
+                            )
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                         )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                PanchangDetailVerticalRow(
+                                    label = "Samvat",
+                                    mainValue = "Vikram ${panchang.vikramSamvat}",
+                                    timingOrContext = "Shaka ${panchang.shakaSamvat}"
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                val sunSign = panchang.sunRashi.substringBefore(" (")
+                                val moonSign = panchang.moonRashi.substringBefore(" (")
+                                PanchangDetailVerticalRow(
+                                    label = "Rashi & Disha Shool",
+                                    mainValue = if (sunSign.isNotBlank() && moonSign.isNotBlank()) "☀ $sunSign · ☽ $moonSign" else "—",
+                                    timingOrContext = if (panchang.dishaShool.isNotBlank()) "Disha Shool: ${panchang.dishaShool}" else ""
+                                )
+                            }
+                        }
                     }
                 }
             }

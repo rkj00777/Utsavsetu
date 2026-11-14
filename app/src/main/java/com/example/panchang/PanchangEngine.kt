@@ -62,6 +62,45 @@ object PanchangEngine {
         "Margashirsha", "Pausha", "Magha", "Phalguna"
     )
 
+    private val RASHI_NAMES = listOf(
+        "Mesha (Aries)", "Vrishabha (Taurus)", "Mithuna (Gemini)",
+        "Karka (Cancer)", "Simha (Leo)", "Kanya (Virgo)",
+        "Tula (Libra)", "Vrishchika (Scorpio)", "Dhanu (Sagittarius)",
+        "Makara (Capricorn)", "Kumbha (Aquarius)", "Meena (Pisces)"
+    )
+
+    private val TAMIL_SOLAR_MONTHS = listOf(
+        "Chithirai", "Vaikasi", "Aani", "Aadi", "Avani", "Purattasi",
+        "Aippasi", "Karthigai", "Margazhi", "Thai", "Maasi", "Panguni"
+    )
+
+    private val MALAYALAM_SOLAR_MONTHS = listOf(
+        "Medam", "Edavam", "Mithunam", "Karkidakam", "Chingam", "Kanni",
+        "Thulam", "Vrischikam", "Dhanu", "Makaram", "Kumbham", "Meenam"
+    )
+
+    private val BENGALI_SOLAR_MONTHS = listOf(
+        "Boishakh", "Joishtho", "Asharh", "Srabon", "Bhadro", "Ashwin",
+        "Kartik", "Agrahayan", "Poush", "Magh", "Falgun", "Choitro"
+    )
+
+    private val ODIA_SOLAR_MONTHS = listOf(
+        "Baisakha", "Jyestha", "Asadha", "Srabana", "Bhadraba", "Aswina",
+        "Kartika", "Margasira", "Pausa", "Magha", "Phalguna", "Chaitra"
+    )
+
+    /**
+     * Returns the current calendar date in [city]'s IANA timezone rather than the device's system timezone.
+     * Prevents off-by-one day mismatches when checking Panchang across regions or emulators in another timezone.
+     */
+    fun localDateForCity(city: City): LocalDate {
+        return try {
+            LocalDate.now(ZoneId.of(city.timeZoneId))
+        } catch (_: Exception) {
+            LocalDate.now()
+        }
+    }
+
     data class LunarMomentState(
         val amantaMonth: String,
         val purnimantaMonth: String,
@@ -154,7 +193,7 @@ object PanchangEngine {
         // 6. Daytime & Pre-dawn Muhurat Windows (Ashta-vibhaga & Panchadasha-muhurta)
         val sunriseMinutes = sunrise.hour * 60 + sunrise.minute
         val sunsetMinutes = sunset.hour * 60 + sunset.minute
-        val daylightDuration = (sunsetMinutes - sunriseMinutes).coerceAtLeast(600)
+        val daylightDuration = (sunsetMinutes - sunriseMinutes).coerceAtLeast(240)
         val eighthSpan = daylightDuration / 8.0
 
         // Rahu Kaal (0-indexed segment 1..7)
@@ -207,11 +246,42 @@ object PanchangEngine {
         val abhijitEnd = sunriseMinutes + floor(daylightDuration * 8.0 / 15.0).toInt()
         val abhijitMuhurat = TimeWindow(abhijitStart, abhijitEnd)
 
-        // Brahma Muhurat: 2 Muhurtas (96 mins) to 1 Muhurta (48 mins) before Sunrise
+        // Brahma Muhurat (Drik / Surya Siddhanta standard):
+        // 14th of 15 Night Muhurtas (Ratrimana / 15), spanning [Sunrise - 2 * nightMuhurta, Sunrise - 1 * nightMuhurta].
+        val ratrimana = ((1440 - sunsetMinutes) + sunriseMinutes).coerceIn(240, 1080)
+        val nightMuhurta = ratrimana / 15.0
         val brahmaMuhurat = TimeWindow(
-            startMinutes = (sunriseMinutes - 96).coerceAtLeast(0),
-            endMinutes = (sunriseMinutes - 48).coerceAtLeast(0)
+            startMinutes = (sunriseMinutes - 2.0 * nightMuhurta).roundToInt().coerceAtLeast(0),
+            endMinutes = (sunriseMinutes - nightMuhurta).roundToInt().coerceAtLeast(0)
         )
+
+        // Sidereal Solar & Lunar Rashis (0..11)
+        val sunRashiIdx = (siderealSunLon / 30.0).toInt().coerceIn(0, 11)
+        val moonRashiIdx = (siderealMoonLon / 30.0).toInt().coerceIn(0, 11)
+        val sunRashi = RASHI_NAMES[sunRashiIdx]
+        val moonRashi = RASHI_NAMES[moonRashiIdx]
+
+        // Shaka Samvat & Chaitradi Vikram Samvat (transitions on Chaitra Shukla Pratipada)
+        val isBeforeChaitraNewYear = date.monthValue <= 4 && amantaMonth in setOf("Pausha", "Magha", "Phalguna")
+        val shakaSamvat = if (isBeforeChaitraNewYear) date.year - 79 else date.year - 78
+        val vikramSamvat = if (isBeforeChaitraNewYear) date.year + 56 else date.year + 57
+
+        // Weekday Disha Shool (Directional caution)
+        val dishaShool = when (date.dayOfWeek) {
+            DayOfWeek.MONDAY, DayOfWeek.SATURDAY -> "East"
+            DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY -> "North"
+            DayOfWeek.THURSDAY -> "South"
+            DayOfWeek.FRIDAY, DayOfWeek.SUNDAY -> "West"
+        }
+
+        // Regional Solar Month when city uses a Solar calendar tradition
+        val regionalSolarMonth = when (city.panchangConvention) {
+            RegionalPanchangConvention.TAMIL_SOLAR -> "${TAMIL_SOLAR_MONTHS[sunRashiIdx]} (Tamil Solar)"
+            RegionalPanchangConvention.MALAYALAM_SOLAR -> "${MALAYALAM_SOLAR_MONTHS[sunRashiIdx]} (Malayalam Solar)"
+            RegionalPanchangConvention.BENGALI_SOLAR -> "${BENGALI_SOLAR_MONTHS[sunRashiIdx]} (Bengali Solar)"
+            RegionalPanchangConvention.ODIA_SOLAR -> "${ODIA_SOLAR_MONTHS[sunRashiIdx]} (Odia Panji)"
+            else -> null
+        }
 
         val result = PanchangDay(
             date = date,
@@ -230,7 +300,13 @@ object PanchangEngine {
             brahmaMuhurat = brahmaMuhurat,
             yamagandam = yamagandam,
             gulikaKaal = gulikaKaal,
-            isAdhikaMasa = isAdhika
+            isAdhikaMasa = isAdhika,
+            sunRashi = sunRashi,
+            moonRashi = moonRashi,
+            shakaSamvat = shakaSamvat,
+            vikramSamvat = vikramSamvat,
+            dishaShool = dishaShool,
+            regionalSolarMonth = regionalSolarMonth
         )
         val durationNanos = System.nanoTime() - startNanos
         com.example.platform.monitoring.AppPerformanceMonitor.recordExecution("PanchangEngine.computeDayPanchang", durationNanos)
@@ -1117,8 +1193,8 @@ object PanchangEngine {
 
         val tzOffsetMinutes = tzOffsetHours * 60.0
         val solarNoon = 720.0 - (4.0 * lon) - eqTimeMinutes + tzOffsetMinutes
-        val sunriseMinutes = (solarNoon - (haDeg * 4.0)).roundToInt().coerceIn(240, 540)
-        val sunsetMinutes = (solarNoon + (haDeg * 4.0)).roundToInt().coerceIn(900, 1260)
+        val sunriseMinutes = (solarNoon - (haDeg * 4.0)).roundToInt().coerceIn(180, 660)
+        val sunsetMinutes = (solarNoon + (haDeg * 4.0)).roundToInt().coerceIn(840, 1380)
 
         val sunrise = LocalTime.of(sunriseMinutes / 60, sunriseMinutes % 60)
         val sunset = LocalTime.of(sunsetMinutes / 60, sunsetMinutes % 60)

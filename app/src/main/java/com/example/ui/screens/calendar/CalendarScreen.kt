@@ -74,6 +74,9 @@ fun CalendarScreen(
     val yearListState = rememberLazyListState()
     val monthListState = rememberLazyListState()
     val supportedYears = remember { com.example.panchang.FestivalDateEvaluator.SUPPORTED_YEARS.toList() }
+    val cityToday = remember(state.hostCity.id) {
+        com.example.panchang.PanchangEngine.localDateForCity(state.hostCity)
+    }
 
     LaunchedEffect(state.currentMonth.year) {
         val idx = supportedYears.indexOf(state.currentMonth.year)
@@ -497,6 +500,7 @@ fun CalendarScreen(
                     MonthGrid(
                         yearMonth = state.currentMonth,
                         selectedDate = state.selectedDate,
+                        today = cityToday,
                         festivalDates = state.monthOccurrences.groupBy { it.date },
                         onDateSelected = { viewModel.selectDate(it) }
                     )
@@ -520,6 +524,7 @@ fun CalendarScreen(
                         selectedEvents.forEach { occ ->
                             FestivalCard(
                                 occurrence = occ,
+                                referenceDate = cityToday,
                                 onClick = { onNavigateToFestival(occ.festival.id) },
                                 onShareClick = { shareTargetOccurrence = occ },
                                 modifier = Modifier.padding(vertical = 4.dp)
@@ -600,6 +605,7 @@ fun CalendarScreen(
                     } else {
                         FestivalCard(
                             occurrence = occurrence,
+                            referenceDate = cityToday,
                             onClick = { onNavigateToFestival(occurrence.festival.id) },
                             onShareClick = { shareTargetOccurrence = occurrence }
                         )
@@ -782,6 +788,7 @@ private fun AgendaEventRowCard(
 private fun MonthGrid(
     yearMonth: YearMonth,
     selectedDate: LocalDate,
+    today: LocalDate = LocalDate.now(),
     festivalDates: Map<LocalDate, List<FestivalOccurrence>>,
     onDateSelected: (LocalDate) -> Unit
 ) {
@@ -839,7 +846,7 @@ private fun MonthGrid(
                     if (dayNumber in 1..daysInMonth) {
                         val date = yearMonth.atDay(dayNumber)
                         val isSelected = date == selectedDate
-                        val isToday = date == LocalDate.now()
+                        val isToday = date == today
                         val eventsOnDay = festivalDates[date].orEmpty()
                         val hasFestival = eventsOnDay.isNotEmpty()
                         val cellBorder = when {

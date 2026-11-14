@@ -17,7 +17,7 @@ import java.time.LocalDate
 
 data class DetailUiState(
     val isLoading: Boolean = true,
-    val selectedYear: Int = LocalDate.now().year,
+    val selectedYear: Int = PanchangEngine.localDateForCity(City.DELHI).year,
     val festival: Festival? = null,
     val resolvedDate: LocalDate? = null,
     val muhuratWindow: String = "",
@@ -42,7 +42,7 @@ class DetailViewModel(
     private val cloudSyncRepository: CloudSyncRepository
 ) : ViewModel() {
 
-    private val _selectedYear = MutableStateFlow(LocalDate.now().year)
+    private val _selectedYear = MutableStateFlow(PanchangEngine.localDateForCity(City.DELHI).year)
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 

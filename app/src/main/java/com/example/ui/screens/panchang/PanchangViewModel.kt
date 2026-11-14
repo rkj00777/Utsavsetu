@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 data class PanchangUiState(
-    val selectedDate: LocalDate = LocalDate.now(),
+    val selectedDate: LocalDate = PanchangEngine.localDateForCity(City.DELHI),
     val hostCity: City = City.DELHI,
     val panchangDay: PanchangDay? = null,
     val brahmaMuhurat: TimeWindow? = null,
@@ -27,7 +27,7 @@ class PanchangViewModel(
     private val festivalRepository: FestivalRepository? = null
 ) : ViewModel() {
 
-    private val _selectedDate = MutableStateFlow(LocalDate.now())
+    private val _selectedDate = MutableStateFlow<LocalDate?>(null)
     private val _uiState = MutableStateFlow(PanchangUiState())
     val uiState: StateFlow<PanchangUiState> = _uiState.asStateFlow()
 
@@ -40,20 +40,16 @@ class PanchangViewModel(
             combine(
                 userPreferencesRepository.userPreferencesFlow,
                 _selectedDate
-            ) { prefs, date ->
+            ) { prefs, explicitDate ->
                 val city = prefs.hostCity
+                val date = explicitDate ?: PanchangEngine.localDateForCity(city)
                 val panchang = festivalRepository?.getAndCacheDayPanchang(date, city)
                     ?: PanchangEngine.computeDayPanchang(date, city)
-                val sunriseMins = panchang.sunrise.hour * 60 + panchang.sunrise.minute
-                val brahma = TimeWindow(
-                    startMinutes = (sunriseMins - 96).coerceAtLeast(0),
-                    endMinutes = (sunriseMins - 48).coerceAtLeast(0)
-                )
                 PanchangUiState(
                     selectedDate = date,
                     hostCity = city,
                     panchangDay = panchang,
-                    brahmaMuhurat = brahma,
+                    brahmaMuhurat = panchang.brahmaMuhurat,
                     userPreferences = prefs,
                     isLoading = false
                 )
@@ -64,15 +60,17 @@ class PanchangViewModel(
     }
 
     fun previousDay() {
-        _selectedDate.update { it.minusDays(1) }
+        val current = _selectedDate.value ?: _uiState.value.selectedDate
+        _selectedDate.value = current.minusDays(1)
     }
 
     fun nextDay() {
-        _selectedDate.update { it.plusDays(1) }
+        val current = _selectedDate.value ?: _uiState.value.selectedDate
+        _selectedDate.value = current.plusDays(1)
     }
 
     fun jumpToToday() {
-        _selectedDate.value = LocalDate.now()
+        _selectedDate.value = PanchangEngine.localDateForCity(_uiState.value.hostCity)
     }
 
     fun selectDate(date: LocalDate) {

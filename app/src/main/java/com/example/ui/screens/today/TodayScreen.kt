@@ -34,6 +34,8 @@ import com.example.domain.model.FestivalOccurrence
 import com.example.panchang.City
 import com.example.panchang.LunarConvention
 import com.example.panchang.PanchangDay
+import com.example.panchang.PanchangEngine
+import com.example.panchang.RegionalPanchangConvention
 import com.example.ui.components.*
 import com.example.ui.theme.LocalLiquidGlassTokens
 import com.example.ui.theme.LocalUtsavStrings
@@ -83,10 +85,19 @@ fun TodayScreen(
 
     val panchang = state.panchang
     val prefs = state.userPreferences
-    val primaryConvention = prefs?.selectedTraditions?.firstOrNull()?.defaultConvention ?: LunarConvention.AMANTA
+    val primaryConvention = when (prefs?.hostCity?.panchangConvention) {
+        RegionalPanchangConvention.PURNIMANTA_NORTH,
+        RegionalPanchangConvention.ODIA_SOLAR -> LunarConvention.PURNIMANTA
+        RegionalPanchangConvention.AMANTA_GUJARAT_MAHARASHTRA,
+        RegionalPanchangConvention.AMANTA_SOUTH,
+        RegionalPanchangConvention.TAMIL_SOLAR,
+        RegionalPanchangConvention.MALAYALAM_SOLAR,
+        RegionalPanchangConvention.BENGALI_SOLAR -> LunarConvention.AMANTA
+        else -> prefs?.selectedTraditions?.firstOrNull()?.defaultConvention ?: LunarConvention.AMANTA
+    }
 
-    val todayFormatted = remember(strings.language) {
-        UtsavLocalizationEngine.formatDate(LocalDate.now(), "EEEE, d MMMM", strings.language)
+    val todayFormatted = remember(state.todayDate, strings.language) {
+        UtsavLocalizationEngine.formatDate(state.todayDate, "EEEE, d MMMM", strings.language)
     }
 
     // Dialogs for Share & Reminder Centre
@@ -95,7 +106,7 @@ fun TodayScreen(
             festival = occ.festival,
             date = occ.date,
             muhuratWindow = occ.muhuratWindowFormatted,
-            cityName = prefs?.hostCity?.name ?: "Bengaluru",
+            cityName = prefs?.hostCity?.name ?: City.DELHI.name,
             onDismiss = { shareTargetOccurrence = null }
         )
     }
@@ -203,8 +214,8 @@ fun TodayScreen(
 
                 // Compact Interactive City Row
                 Box {
-                    val localizedCity = UtsavLocalizationEngine.localizeCityName(prefs?.hostCity?.name ?: "Bengaluru", strings.language)
-                    val localizedState = UtsavLocalizationEngine.localizeStateName(prefs?.hostCity?.state ?: "Karnataka", strings.language)
+                    val localizedCity = UtsavLocalizationEngine.localizeCityName(prefs?.hostCity?.name ?: City.DELHI.name, strings.language)
+                    val localizedState = UtsavLocalizationEngine.localizeStateName(prefs?.hostCity?.state ?: City.DELHI.state, strings.language)
                     Surface(
                         onClick = { cityMenuExpanded = true },
                         shape = RoundedCornerShape(12.dp),
@@ -294,8 +305,12 @@ fun TodayScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val monthLabel = buildString {
+                                append("${strings.lunarMonthLabel}: $localizedAmanta / $localizedPurnimanta")
+                                panchang.regionalSolarMonth?.let { append(" · $it") }
+                            }
                             Text(
-                                text = "${strings.lunarMonthLabel}: $localizedAmanta / $localizedPurnimanta",
+                                text = monthLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f)
@@ -375,7 +390,7 @@ fun TodayScreen(
                     NextFestivalSpotlightCard(
                         occurrence = nextFest,
                         daysRemaining = state.daysUntilNextFestival,
-                        cityName = UtsavLocalizationEngine.localizeCityName(prefs?.hostCity?.name ?: "Bengaluru", strings.language),
+                        cityName = UtsavLocalizationEngine.localizeCityName(prefs?.hostCity?.name ?: City.DELHI.name, strings.language),
                         onExplore = { onNavigateToFestival(nextFest.festival.id) },
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
                     )
@@ -425,7 +440,7 @@ fun TodayScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "${strings.upcomingFestivalsSubtitlePrefix} ${UtsavLocalizationEngine.localizeCityName(prefs?.hostCity?.name ?: "Bengaluru", strings.language)}",
+                        text = "${strings.upcomingFestivalsSubtitlePrefix} ${UtsavLocalizationEngine.localizeCityName(prefs?.hostCity?.name ?: City.DELHI.name, strings.language)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -452,6 +467,7 @@ fun TodayScreen(
             Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                 FestivalCard(
                     occurrence = occurrence,
+                    referenceDate = state.todayDate,
                     onClick = { onNavigateToFestival(occurrence.festival.id) },
                     onShareClick = { shareTargetOccurrence = occurrence }
                 )
@@ -735,7 +751,7 @@ private fun TodaySignatureHeroCard(
                                         color = glassTokens.decorativeGold,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), upcoming.date)
+                                    val days = java.time.temporal.ChronoUnit.DAYS.between(PanchangEngine.localDateForCity(panchang.city), upcoming.date)
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
                                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
