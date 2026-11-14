@@ -20,7 +20,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [35])
 class ExampleRobolectricTest {
 
     @get:Rule
@@ -60,7 +60,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w320dp-h640dp")
+    @Config(sdk = [35], qualifiers = "w320dp-h640dp")
     fun `compact mobile 320x640 renders welcome and navigates all 5 tabs cleanly`() {
         dismissSplashAndWelcome()
         composeTestRule.onNodeWithTag("bottom_navigation_bar").assertIsDisplayed()
@@ -82,7 +82,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w600dp-h960dp")
+    @Config(sdk = [35], qualifiers = "w600dp-h960dp")
     fun `medium tablet portrait 600x960 renders calendar grid and festival search cleanly`() {
         dismissSplashAndWelcome()
         composeTestRule.onNodeWithTag("bottom_navigation_bar").assertIsDisplayed()
@@ -98,7 +98,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w1024dp-h768dp-land")
+    @Config(sdk = [35], qualifiers = "w1024dp-h768dp-land")
     fun `expanded tablet landscape 1024x768 renders all screens and festival detail cleanly`() {
         dismissSplashAndWelcome()
         composeTestRule.onNodeWithTag("bottom_navigation_bar").assertIsDisplayed()
@@ -123,7 +123,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    @Config(sdk = [36], qualifiers = "w360dp-h740dp")
+    @Config(sdk = [35], qualifiers = "w360dp-h740dp")
     fun `audit all 8 languages and dropdowns for compact height and zero tall empty boxes`() {
         // 1. Audit all 8 languages in UtsavLocalizationEngine & FestivalPujaMantraCatalog
         val allFestivals = com.example.data.catalog.BundledCatalog.FESTIVALS.map { it.toDomain() }
