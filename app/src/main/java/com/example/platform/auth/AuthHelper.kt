@@ -8,8 +8,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
@@ -29,10 +27,21 @@ object AuthHelper {
         onError: (String) -> Unit,
         onCancelled: () -> Unit
     ) {
-        val clientId = try {
-            context.getString(R.string.default_web_client_id)
-        } catch (e: Exception) {
-            onError("Google Sign-In configuration missing: default_web_client_id not found")
+        // google-services.json is intentionally not committed. The Google Services
+        // Gradle plugin creates this resource only when a real Firebase config is supplied.
+        // Resolve it dynamically so the app still compiles for offline/local builds.
+        val clientIdResource = context.resources.getIdentifier(
+            "default_web_client_id",
+            "string",
+            context.packageName
+        )
+        if (clientIdResource == 0) {
+            onError("Google Sign-In is not configured for this build. Add the Firebase Android configuration to enable it.")
+            return
+        }
+        val clientId = context.getString(clientIdResource).takeIf { it.isNotBlank() }
+        if (clientId == null) {
+            onError("Google Sign-In client ID is empty. Check the Firebase Android configuration.")
             return
         }
 
