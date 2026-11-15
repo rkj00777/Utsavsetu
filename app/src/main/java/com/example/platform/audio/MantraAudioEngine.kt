@@ -486,9 +486,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     private fun speakCurrentRound() {
         val mantra = activeMantra ?: return
-        val ttsInstance = tts ?: return
-        if (!isTtsReady) return
-
         stopVoiceTrack()
         // Prefer a verified human recording for this mantra and selected voice.
         // Missing recordings fall back to the installed neural/Google TTS voice.
@@ -511,6 +508,8 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 if (recordingPlayer != null) return
             } catch (_: Throwable) { stopVoiceTrack() }
         }
+        val ttsInstance = tts ?: return
+        if (!isTtsReady) return
         speakMantraWithTts(mantra, ttsInstance)
     }
 
