@@ -98,7 +98,7 @@ class AdMobNativeAdLoader(
 
 @Composable
 fun rememberAdMobNativeAd(
-    adUnitId: String = ADMOB_NATIVE_AD_UNIT_ID
+    adUnitId: String = DEFAULT_ADMOB_NATIVE_AD_UNIT_ID
 ): AdMobNativeAdLoader {
     val context = LocalContext.current.applicationContext
     val loader = remember(adUnitId) {
