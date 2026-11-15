@@ -39,7 +39,7 @@ data class MantraPlaybackState(
     val stepNumber: Int = 1,
     val currentRound: Int = 0,
     val targetRounds: Int = 1,
-    val speed: Float = 0.85f,
+    val speed: Float = 1.0f,
     val isTanpuraEnabled: Boolean = true,
     val isTablaEnabled: Boolean = true,
     val isCompleted: Boolean = false
@@ -122,8 +122,33 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     fun getVoiceGender(): String = activeVoiceGender
 
+    /**
+     * Reports only gender choices that can be identified from installed Indian Devanagari voices.
+     * Android's Voice API does not expose a formal gender field; this uses conservative voice-name
+     * metadata matching and deliberately does not infer gender from pitch.
+     */
+    fun getAvailableVoiceGenders(): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return emptySet()
+        val voices = try { tts?.voices.orEmpty() } catch (_: Throwable) { emptySet() }
+        val supportedLanguages = setOf("sa", "hi", "mr", "ne")
+        val devanagariVoices = voices.filter { it.locale.language.lowercase(Locale.ROOT) in supportedLanguages }
+        return buildSet {
+            if (devanagariVoices.any {
+                val name = it.name.lowercase(Locale.ROOT)
+                isMaleVoiceName(name) && !isFemaleVoiceName(name)
+            }) add("MALE")
+            if (devanagariVoices.any {
+                val name = it.name.lowercase(Locale.ROOT)
+                isFemaleVoiceName(name) && !isMaleVoiceName(name)
+            }) add("FEMALE")
+        }
+    }
+
+    fun isVoiceGenderAvailable(gender: String): Boolean =
+        getAvailableVoiceGenders().contains(if (gender.equals("FEMALE", true)) "FEMALE" else "MALE")
+
     private fun selectIndianLocale(ttsInstance: TextToSpeech): Locale {
-        val candidateTags = listOf("sa-IN", "hi-IN", "mr-IN", "ne-NP", "gu-IN", "bn-IN", "kn-IN", "te-IN", "ta-IN", "en-IN")
+        val candidateTags = listOf("hi-IN", "sa-IN", "mr-IN", "ne-NP", "gu-IN", "bn-IN", "kn-IN", "te-IN", "ta-IN", "en-IN")
         for (tag in candidateTags) {
             val loc = Locale.forLanguageTag(tag)
             try {
@@ -207,13 +232,13 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                     val sortedIndianVoices = indianVoices.sortedWith(
                         compareBy<Voice> { voice ->
                             when (voice.locale.language.lowercase(Locale.ROOT)) {
-                                "sa" -> 0
-                                "hi" -> 1
+                                "hi" -> 0
+                                "sa" -> 1
                                 "mr" -> 2
                                 in indianLanguages -> 3
                                 else -> 4 // en-IN
                             }
-                        }.thenBy { it.isNetworkConnectionRequired }
+                        }.thenByDescending { it.quality }.thenBy { it.isNetworkConnectionRequired }
                     )
 
                     val devanagariVoices = sortedIndianVoices.filter {
@@ -254,19 +279,10 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             } catch (_: Throwable) {}
         }
 
-        // Step 3: Configure natural, crystal-clear TTS pitch & speech rate
-        val userSpeed = _playbackState.value.speed
-        if (isFemale) {
-            // Female Pandit (महिला पुरोहित / विदुषी): Clear, warm, natural female pitch
-            val pitch = if (isSelectedVoiceNativeMale) 1.22f else 1.08f
-            ttsInstance.setPitch(pitch)
-            ttsInstance.setSpeechRate((userSpeed * 0.94f).coerceIn(0.75f, 1.15f))
-        } else {
-            // Male Pandit (पुरुष पुरोहित): Clear, resonant, natural male pitch without formant distortion
-            val pitch = if (isSelectedVoiceNativeMale) 0.86f else 0.76f
-            ttsInstance.setPitch(pitch)
-            ttsInstance.setSpeechRate((userSpeed * 0.92f).coerceIn(0.74f, 1.12f))
-        }
+        // Do not synthesize gender by changing pitch. If the requested gender-specific
+        // voice is not installed, keep the engine's natural voice characteristics.
+        ttsInstance.setPitch(1.0f)
+        ttsInstance.setSpeechRate(_playbackState.value.speed.coerceIn(0.5f, 2.0f))
     }
 
     override fun onInit(status: Int) {
@@ -295,8 +311,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 }
             })
 
-            isTtsReady = true
-            // If playMantra was invoked before TTS finished initializing, start speaking now
+            isTtsReady = true            // If playMantra was invoked before TTS finished initializing, start speaking now
             if (_playbackState.value.isPlaying && activeMantra != null) {
                 speakCurrentRound()
             }
@@ -486,10 +501,12 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         val mantra = activeMantra ?: return
         val ttsInstance = tts ?: return
         if (!isTtsReady) return
-
         stopVoiceTrack()
-        applyVoiceAndPitchConfig(ttsInstance)
+        speakMantraWithTts(mantra, ttsInstance)
+    }
 
+    private fun speakMantraWithTts(mantra: FestivalPujaMantra, ttsInstance: TextToSpeech) {
+        applyVoiceAndPitchConfig(ttsInstance)
         val utteranceId = "mantra_${mantra.id}_round_${_playbackState.value.currentRound}"
         val textToSpeak = formatForPanditChanting(mantra.sanskrit, isDevanagariVoiceActive)
         val params = Bundle().apply {
@@ -566,8 +583,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 // Natural 1100ms breathing pause between mantra rounds
                 delay(1100)
                 if (_playbackState.value.isPlaying) {
-                    speakCurrentRound()
-                }
+                    speakCurrentRound()                }
             }
         }
     }
@@ -867,7 +883,6 @@ internal object VedicPanditVoiceProcessor {
             input = filtered,
             sampleRate = sampleRate
         )
-
         // 5. Convert back to 16-bit PCM with warm soft-saturation
         val out = ShortArray(reverberated.size)
         for (i in reverberated.indices) {

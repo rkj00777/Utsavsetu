@@ -15,16 +15,20 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeAdOptions
+import com.example.BuildConfig
 
 /**
  * Google AdMob Production Native Ad Unit ID provided by publisher:
  * ca-app-pub-4148485857290947/5042099689
  */
 const val ADMOB_NATIVE_AD_UNIT_ID = "ca-app-pub-4148485857290947/5042099689"
-const val ADMOB_NATIVE_TEST_UNIT_ID = ADMOB_NATIVE_AD_UNIT_ID
+const val ADMOB_NATIVE_TEST_UNIT_ID = "ca-app-pub-3940256099942544/2247696110"
+
+val DEFAULT_ADMOB_NATIVE_AD_UNIT_ID: String
+    get() = if (BuildConfig.DEBUG) ADMOB_NATIVE_TEST_UNIT_ID else ADMOB_NATIVE_AD_UNIT_ID
 
 data class NativeAdState(
-    val adUnitId: String = ADMOB_NATIVE_AD_UNIT_ID,
+    val adUnitId: String = DEFAULT_ADMOB_NATIVE_AD_UNIT_ID,
     val isLoading: Boolean = false,
     val nativeAd: NativeAd? = null,
     val errorMessage: String? = null,
@@ -34,7 +38,7 @@ data class NativeAdState(
 
 class AdMobNativeAdLoader(
     private val context: Context,
-    val adUnitId: String = ADMOB_NATIVE_AD_UNIT_ID
+    val adUnitId: String = DEFAULT_ADMOB_NATIVE_AD_UNIT_ID
 ) {
     var state by mutableStateOf(NativeAdState(adUnitId = adUnitId, isLoading = true))
         private set
@@ -94,7 +98,7 @@ class AdMobNativeAdLoader(
 
 @Composable
 fun rememberAdMobNativeAd(
-    adUnitId: String = ADMOB_NATIVE_AD_UNIT_ID
+    adUnitId: String = DEFAULT_ADMOB_NATIVE_AD_UNIT_ID
 ): AdMobNativeAdLoader {
     val context = LocalContext.current.applicationContext
     val loader = remember(adUnitId) {
