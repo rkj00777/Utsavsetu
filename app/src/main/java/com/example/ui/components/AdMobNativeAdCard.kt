@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
 import com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
+import com.example.platform.ads.DEFAULT_ADMOB_NATIVE_AD_UNIT_ID
 import com.example.platform.ads.rememberAdMobNativeAd
 import com.example.ui.theme.LocalLiquidGlassTokens
 import com.google.android.gms.ads.nativead.MediaView
@@ -65,7 +66,7 @@ import com.google.android.gms.ads.nativead.NativeAdView
 @Composable
 fun AdMobNativeAdCard(
     modifier: Modifier = Modifier,
-    adUnitId: String = ADMOB_NATIVE_AD_UNIT_ID,
+    adUnitId: String = DEFAULT_ADMOB_NATIVE_AD_UNIT_ID,
     showDismissButton: Boolean = true,
     onDismiss: (() -> Unit)? = null
 ) {
