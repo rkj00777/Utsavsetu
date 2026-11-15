@@ -63,6 +63,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     private val engineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var tts: TextToSpeech? = null
+    private val neuralTts = NinadaNeuralTtsEngine(appContext)
     private var isTtsReady = false
     private var isDevanagariVoiceActive = true
     private var isSelectedVoiceNativeMale = false
@@ -127,25 +128,10 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
      * Android's Voice API does not expose a formal gender field; this uses conservative voice-name
      * metadata matching and deliberately does not infer gender from pitch.
      */
-    fun getAvailableVoiceGenders(): Set<String> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return emptySet()
-        val voices = try { tts?.voices.orEmpty() } catch (_: Throwable) { emptySet() }
-        val supportedLanguages = setOf("sa", "hi", "mr", "ne")
-        val devanagariVoices = voices.filter { it.locale.language.lowercase(Locale.ROOT) in supportedLanguages }
-        return buildSet {
-            if (devanagariVoices.any {
-                val name = it.name.lowercase(Locale.ROOT)
-                isMaleVoiceName(name) && !isFemaleVoiceName(name)
-            }) add("MALE")
-            if (devanagariVoices.any {
-                val name = it.name.lowercase(Locale.ROOT)
-                isFemaleVoiceName(name) && !isMaleVoiceName(name)
-            }) add("FEMALE")
-        }
-    }
+    fun getAvailableVoiceGenders(): Set<String> = setOf("MALE", "FEMALE")
 
     fun isVoiceGenderAvailable(gender: String): Boolean =
-        getAvailableVoiceGenders().contains(if (gender.equals("FEMALE", true)) "FEMALE" else "MALE")
+        gender.equals("MALE", true) || gender.equals("FEMALE", true)
 
     private fun selectIndianLocale(ttsInstance: TextToSpeech): Locale {
         val candidateTags = listOf("hi-IN", "sa-IN", "mr-IN", "ne-NP", "gu-IN", "bn-IN", "kn-IN", "te-IN", "ta-IN", "en-IN")
@@ -499,10 +485,29 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     private fun speakCurrentRound() {
         val mantra = activeMantra ?: return
-        val ttsInstance = tts ?: return
-        if (!isTtsReady) return
         stopVoiceTrack()
-        speakMantraWithTts(mantra, ttsInstance)
+        voicePlaybackJob = engineScope.launch {
+            val textToSpeak = formatForPanditChanting(mantra.sanskrit, true)
+            val neuralPlayed = try {
+                neuralTts.play(textToSpeak, activeVoiceGender, _playbackState.value.speed) {
+                    _playbackState.value = _playbackState.value.copy(isPlaying = true)
+                }
+            } catch (cancelled: CancellationException) {
+                return@launch
+            } catch (_: Throwable) {
+                false
+            }
+            if (neuralPlayed) {
+                if (_playbackState.value.isPlaying) handleChantCompleted()
+            } else {
+                val ttsInstance = tts
+                if (ttsInstance != null && isTtsReady && _playbackState.value.isPlaying) {
+                    speakMantraWithTts(mantra, ttsInstance)
+                } else {
+                    _playbackState.value = _playbackState.value.copy(isPlaying = false)
+                }
+            }
+        }
     }
 
     private fun speakMantraWithTts(mantra: FestivalPujaMantra, ttsInstance: TextToSpeech) {
@@ -518,6 +523,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     private fun stopVoiceTrack() {
         voicePlaybackJob?.cancel()
+        neuralTts.stop()
         voicePlaybackJob = null
         try {
             voiceTrack?.pause()
