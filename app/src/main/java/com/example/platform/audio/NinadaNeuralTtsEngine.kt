@@ -10,6 +10,7 @@ import ai.onnxruntime.OrtSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.File
@@ -44,7 +45,7 @@ internal class NinadaNeuralTtsEngine(context: Context) {
     private val modelDir = File(appContext.filesDir, "ninada/$MODEL_VERSION")
     private val environment: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
     private val sessions = ConcurrentHashMap<String, OrtSession>()
-    private val vocabLock = Any()
+    private val vocabMutex = Mutex()
     @Volatile private var charIds: Map<String, Int>? = null
     @Volatile private var blankId: Long = -1L
     @Volatile private var activeTrack: AudioTrack? = null
@@ -204,28 +205,29 @@ internal class NinadaNeuralTtsEngine(context: Context) {
 
     private suspend fun getVocabulary(): Map<String, Int> {
         charIds?.let { return it }
-        return withContext(Dispatchers.IO) {
-            synchronized(vocabLock) {
-                charIds?.let { return@synchronized it }
-                val vocabFile = downloadIfNeeded(
-                    File(modelDir, "vocabs.json"),
-                    VOCAB_URL,
-                    1_000L
-                )
-                val root = JSONObject(vocabFile.readText(Charsets.UTF_8))
-                val sanskrit = root.getJSONObject("languages").getJSONObject("sa")
-                val mapJson = sanskrit.getJSONObject("char_to_id")
-                val map = buildMap {
-                    val keys = mapJson.keys()
-                    while (keys.hasNext()) {
-                        val key = keys.next()
-                        put(key, mapJson.getInt(key))
-                    }
+        vocabMutex.lock()
+        try {
+            charIds?.let { return it }
+            val vocabFile = downloadIfNeeded(
+                File(modelDir, "vocabs.json"),
+                VOCAB_URL,
+                1_000L
+            )
+            val root = JSONObject(vocabFile.readText(Charsets.UTF_8))
+            val sanskrit = root.getJSONObject("languages").getJSONObject("sa")
+            val mapJson = sanskrit.getJSONObject("char_to_id")
+            val map = buildMap {
+                val keys = mapJson.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    put(key, mapJson.getInt(key))
                 }
-                blankId = sanskrit.getLong("blank_id")
-                charIds = map
-                map
             }
+            blankId = sanskrit.getLong("blank_id")
+            charIds = map
+            return map
+        } finally {
+            vocabMutex.unlock()
         }
     }
 
