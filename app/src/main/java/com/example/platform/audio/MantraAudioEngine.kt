@@ -297,8 +297,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 }
             })
 
-            isTtsReady = true
-            // If playMantra was invoked before TTS finished initializing, start speaking now
+            isTtsReady = true            // If playMantra was invoked before TTS finished initializing, start speaking now
             if (_playbackState.value.isPlaying && activeMantra != null) {
                 speakCurrentRound()
             }
@@ -486,9 +485,10 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     private fun speakCurrentRound() {
         val mantra = activeMantra ?: return
+        val ttsInstance = tts
         stopVoiceTrack()
         // Prefer a verified human recording for this mantra and selected voice.
-        // Missing recordings fall back to the installed neural/Google TTS voice.
+        // Missing recordings fall back to the installed Android/Google TTS voice.
         val resourceId = MantraRecordingCatalog.findResourceId(appContext, mantra.id, activeVoiceGender)
         if (resourceId != 0) {
             try {
@@ -500,7 +500,9 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                     setOnErrorListener { player, _, _ ->
                         try { player.release() } catch (_: Throwable) {}
                         recordingPlayer = null
-                        speakMantraWithTts(mantra, ttsInstance)
+                        if (isTtsReady) {
+                            ttsInstance?.let { speakMantraWithTts(mantra, it) }
+                        }
                         true
                     }
                     start()
@@ -508,8 +510,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 if (recordingPlayer != null) return
             } catch (_: Throwable) { stopVoiceTrack() }
         }
-        val ttsInstance = tts ?: return
-        if (!isTtsReady) return
+        if (ttsInstance == null || !isTtsReady) return
         speakMantraWithTts(mantra, ttsInstance)
     }
 
@@ -597,8 +598,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 // Natural 1100ms breathing pause between mantra rounds
                 delay(1100)
                 if (_playbackState.value.isPlaying) {
-                    speakCurrentRound()
-                }
+                    speakCurrentRound()                }
             }
         }
     }
@@ -898,7 +898,6 @@ internal object VedicPanditVoiceProcessor {
             input = filtered,
             sampleRate = sampleRate
         )
-
         // 5. Convert back to 16-bit PCM with warm soft-saturation
         val out = ShortArray(reverberated.size)
         for (i in reverberated.indices) {
