@@ -298,7 +298,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             })
 
             isTtsReady = true            // If playMantra was invoked before TTS finished initializing, start speaking now
-            if (_playbackState.value.isPlaying && activeMantra != null) {
+            if (_playbackState.value.isPlaying && activeMantra != null && voicePlaybackJob?.isActive != true) {
                 speakCurrentRound()
             }
         }
@@ -503,7 +503,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 val ttsInstance = tts
                 if (ttsInstance != null && isTtsReady && _playbackState.value.isPlaying) {
                     speakMantraWithTts(mantra, ttsInstance)
-                } else {
+                } else if (ttsInstance == null) {
                     _playbackState.value = _playbackState.value.copy(isPlaying = false)
                 }
             }
