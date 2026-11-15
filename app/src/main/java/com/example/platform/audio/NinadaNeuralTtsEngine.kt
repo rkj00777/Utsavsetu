@@ -99,8 +99,8 @@ internal class NinadaNeuralTtsEngine(context: Context) {
             onStarted()
             playPcm(audio.toFloatArray())
             true
-        } catch (_: kotlinx.coroutines.CancellationException) {
-            throw
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (_: Throwable) {
             stop()
             false
@@ -263,9 +263,9 @@ internal class NinadaNeuralTtsEngine(context: Context) {
             .replace(Regex("[A-Za-z]+"), " ")
             .replace("॥", " ॥ ")
             .replace("।", " । ")
-            .split(Regex("(?<=॥)|(?<=।)"))
+            .split(Regex("(?<=[.!?॥।])"))
             .map { it.trim() }
-            .filter { it.any { ch -> ch in '\\u0900'..'\\u097F' } }
+            .filter { it.any { ch -> ch in '\u0900'..'\u097F' } }
 
     private suspend fun downloadIfNeeded(file: File, url: String, minBytes: Long): File =
         withContext(Dispatchers.IO) {
