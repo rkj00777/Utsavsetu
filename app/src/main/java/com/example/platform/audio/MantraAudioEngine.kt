@@ -3,7 +3,6 @@ package com.example.platform.audio
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.MediaPlayer
 import android.media.AudioTrack
 import android.os.Build
 import android.os.Bundle
@@ -83,7 +82,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     // Processed Pandit Voice AudioTrack
     private var voiceTrack: AudioTrack? = null
-    private var recordingPlayer: MediaPlayer? = null
     private var voicePlaybackJob: Job? = null
 
     // Vibrator for Japa Bead haptic click
@@ -123,6 +121,31 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     }
 
     fun getVoiceGender(): String = activeVoiceGender
+
+    /**
+     * Reports only gender choices that can be identified from installed Indian Devanagari voices.
+     * Android's Voice API does not expose a formal gender field; this uses conservative voice-name
+     * metadata matching and deliberately does not infer gender from pitch.
+     */
+    fun getAvailableVoiceGenders(): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return emptySet()
+        val voices = try { tts?.voices.orEmpty() } catch (_: Throwable) { emptySet() }
+        val supportedLanguages = setOf("sa", "hi", "mr", "ne")
+        val devanagariVoices = voices.filter { it.locale.language.lowercase(Locale.ROOT) in supportedLanguages }
+        return buildSet {
+            if (devanagariVoices.any {
+                val name = it.name.lowercase(Locale.ROOT)
+                isMaleVoiceName(name) && !isFemaleVoiceName(name)
+            }) add("MALE")
+            if (devanagariVoices.any {
+                val name = it.name.lowercase(Locale.ROOT)
+                isFemaleVoiceName(name) && !isMaleVoiceName(name)
+            }) add("FEMALE")
+        }
+    }
+
+    fun isVoiceGenderAvailable(gender: String): Boolean =
+        getAvailableVoiceGenders().contains(if (gender.equals("FEMALE", true)) "FEMALE" else "MALE")
 
     private fun selectIndianLocale(ttsInstance: TextToSpeech): Locale {
         val candidateTags = listOf("hi-IN", "sa-IN", "mr-IN", "ne-NP", "gu-IN", "bn-IN", "kn-IN", "te-IN", "ta-IN", "en-IN")
@@ -256,19 +279,10 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             } catch (_: Throwable) {}
         }
 
-        // Step 3: Configure natural, crystal-clear TTS pitch & speech rate
-        val userSpeed = _playbackState.value.speed
-        if (isFemale) {
-            // Female Pandit (महिला पुरोहित / विदुषी): Clear, warm, natural female pitch
-            val pitch = if (isSelectedVoiceNativeMale) 1.04f else 1.02f
-            ttsInstance.setPitch(pitch)
-            ttsInstance.setSpeechRate((userSpeed * 0.96f).coerceIn(0.82f, 1.08f))
-        } else {
-            // Male Pandit (पुरुष पुरोहित): Clear, resonant, natural male pitch without formant distortion
-            val pitch = if (isSelectedVoiceNativeFemale) 0.98f else 0.96f
-            ttsInstance.setPitch(pitch)
-            ttsInstance.setSpeechRate((userSpeed * 0.96f).coerceIn(0.82f, 1.08f))
-        }
+        // Do not synthesize gender by changing pitch. If the requested gender-specific
+        // voice is not installed, keep the engine's natural voice characteristics.
+        ttsInstance.setPitch(1.0f)
+        ttsInstance.setSpeechRate(_playbackState.value.speed.coerceIn(0.5f, 2.0f))
     }
 
     override fun onInit(status: Int) {
@@ -485,32 +499,9 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     private fun speakCurrentRound() {
         val mantra = activeMantra ?: return
-        val ttsInstance = tts
+        val ttsInstance = tts ?: return
+        if (!isTtsReady) return
         stopVoiceTrack()
-        // Prefer a verified human recording for this mantra and selected voice.
-        // Missing recordings fall back to the installed Android/Google TTS voice.
-        val resourceId = MantraRecordingCatalog.findResourceId(appContext, mantra.id, activeVoiceGender)
-        if (resourceId != 0) {
-            try {
-                recordingPlayer = MediaPlayer.create(appContext, resourceId)?.apply {
-                    setOnCompletionListener {
-                        stopVoiceTrack()
-                        handleChantCompleted()
-                    }
-                    setOnErrorListener { player, _, _ ->
-                        try { player.release() } catch (_: Throwable) {}
-                        recordingPlayer = null
-                        if (isTtsReady) {
-                            ttsInstance?.let { speakMantraWithTts(mantra, it) }
-                        }
-                        true
-                    }
-                    start()
-                }
-                if (recordingPlayer != null) return
-            } catch (_: Throwable) { stopVoiceTrack() }
-        }
-        if (ttsInstance == null || !isTtsReady) return
         speakMantraWithTts(mantra, ttsInstance)
     }
 
@@ -526,12 +517,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     }
 
     private fun stopVoiceTrack() {
-        try {
-            recordingPlayer?.setOnCompletionListener(null)
-            recordingPlayer?.stop()
-            recordingPlayer?.release()
-        } catch (_: Throwable) {}
-        recordingPlayer = null
         voicePlaybackJob?.cancel()
         voicePlaybackJob = null
         try {
