@@ -128,6 +128,7 @@ dependencies {
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)
   implementation(libs.play.services.ads)
+  implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // implementation(libs.logging.interceptor)
