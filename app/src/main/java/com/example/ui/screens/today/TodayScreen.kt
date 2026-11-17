@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -475,8 +474,7 @@ fun TodayScreen(
             if (index == 0) {
                 Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                     AdMobNativeAdCard(
-                        adUnitId = ADMOB_NATIVE_TEST_UNIT_ID,
-                        showDismissButton = true
+                                                showDismissButton = true
                     )
                 }
             }
