@@ -54,3 +54,10 @@
    public *;
 }
 -dontwarn com.google.android.gms.ads.**
+
+# 9. ONNX Runtime Android JNI/reflection entry points
+# Native ONNX Runtime code resolves Java API classes (including TensorInfo) by
+# class name/signature through JNI. R8 must not remove, rename, or rewrite them.
+-keep class ai.onnxruntime.** { *; }
+-keep interface ai.onnxruntime.** { *; }
+-keep enum ai.onnxruntime.** { *; }
