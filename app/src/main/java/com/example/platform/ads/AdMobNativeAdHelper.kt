@@ -107,7 +107,7 @@ class AdMobNativeAdLoader(
                     override fun onAdFailedToLoad(error: LoadAdError) {
                         val adapterErrors = error.responseInfo?.adapterResponses
                             ?.joinToString(separator = " | ") { response ->
-                                "${response.adapterClassName}: ${response.description} (latency=${response.latencyMillis}ms)"
+                                "${response.adapterClassName}: ${response} (latency=${response.latencyMillis}ms)"
                             }
                             .orEmpty()
                         val details = buildString {
