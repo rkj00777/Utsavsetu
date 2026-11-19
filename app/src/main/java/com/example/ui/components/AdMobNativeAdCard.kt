@@ -78,7 +78,7 @@ fun AdMobNativeAdCard(
 
     AnimatedVisibility(
         // Never display the hardcoded devotional preview as if it were a live production ad.
-        visible = isVisible && (adState.nativeAd != null || BuildConfig.DEBUG),
+        visible = isVisible,
         enter = fadeIn() + slideInVertically { it / 2 },
         exit = fadeOut() + slideOutVertically { it / 2 },
         modifier = modifier
@@ -351,7 +351,8 @@ fun AdMobNativeAdCard(
                         }
                     )
                 } else {
-                    // Compose High-Fidelity Test Preview Card (Offline, Loading, or Test Bed)
+                    if (BuildConfig.DEBUG) {
+                    // Debug-only visual preview; never shown in production.
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -488,6 +489,37 @@ fun AdMobNativeAdCard(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = if (adState.isLoading) "Loading advertisement…" else "Advertisement unavailable",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = adState.errorMessage?.let { "AdMob error ${adState.errorCode ?: -1}: $it" }
+                                    ?: "No ad has been returned yet. Retry the request shortly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 6,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            OutlinedButton(onClick = { adLoader.loadAd() }, enabled = !adState.isLoading) {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Retry ad request")
+                            }
+                            Text(
+                                text = "Production ad unit • …" + adUnitId.takeLast(10),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
