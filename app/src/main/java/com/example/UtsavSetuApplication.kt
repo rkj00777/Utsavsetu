@@ -28,7 +28,7 @@ class UtsavSetuApplication : Application() {
                 .setTestDeviceIds(listOf(com.google.android.gms.ads.AdRequest.DEVICE_ID_EMULATOR))
                 .build()
             com.google.android.gms.ads.MobileAds.setRequestConfiguration(requestConfig)
-            com.google.android.gms.ads.MobileAds.initialize(this) {}
+            // The ad loader initializes MobileAds and waits for its callback before requesting ads.
         }
         appContainer = AppContainer(this)
         ReminderScheduler.createNotificationChannel(this)

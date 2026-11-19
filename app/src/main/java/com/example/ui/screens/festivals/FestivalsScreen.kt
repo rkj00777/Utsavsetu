@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
 import com.example.ui.components.AdMobNativeAdCard
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -398,7 +397,7 @@ fun FestivalsScreen(
                     }
                     if (index == 1) {
                         Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                            AdMobNativeAdCard(adUnitId = ADMOB_NATIVE_TEST_UNIT_ID)
+                            AdMobNativeAdCard()
                         }
                     }
                 }
@@ -526,7 +525,7 @@ fun FestivalsScreen(
                         }
                         if (index == 1 && group == state.groupedFestivals.firstOrNull()) {
                             Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                                AdMobNativeAdCard(adUnitId = ADMOB_NATIVE_TEST_UNIT_ID)
+                                AdMobNativeAdCard()
                             }
                         }
                     }
