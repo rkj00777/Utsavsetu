@@ -43,8 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
-import com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
+import com.example.BuildConfig
 import com.example.platform.ads.DEFAULT_ADMOB_NATIVE_AD_UNIT_ID
 import com.example.platform.ads.rememberAdMobNativeAd
 import com.example.ui.theme.LocalLiquidGlassTokens
@@ -78,7 +77,8 @@ fun AdMobNativeAdCard(
     val softPress = rememberSoftPressController()
 
     AnimatedVisibility(
-        visible = isVisible,
+        // Never display the hardcoded devotional preview as if it were a live production ad.
+        visible = isVisible && (adState.nativeAd != null || BuildConfig.DEBUG),
         enter = fadeIn() + slideInVertically { it / 2 },
         exit = fadeOut() + slideOutVertically { it / 2 },
         modifier = modifier
