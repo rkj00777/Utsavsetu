@@ -1,0 +1,41 @@
+name: Deploy UtsavSetu app-ads.txt to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hosting/public/**"
+      - "firebase.json"
+      - ".github/workflows/firebase-hosting.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-hosting-live
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy app-ads.txt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify required hosting files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s hosting/public/app-ads.txt
+          grep -Fx "google.com, pub-4148485857290947, DIRECT, f08c47fec0942fa0" hosting/public/app-ads.txt
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_UTSAVSETU_WEB }}
+          projectId: utsavsetu-web
+          channelId: live
