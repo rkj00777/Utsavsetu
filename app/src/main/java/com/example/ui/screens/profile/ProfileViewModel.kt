@@ -1,5 +1,6 @@
 package com.example.ui.screens.profile
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.preferences.AppLanguage
@@ -10,6 +11,7 @@ import com.example.data.repository.CloudSyncRepository
 import com.example.data.repository.FestivalRepository
 import com.example.panchang.City
 import com.example.panchang.RegionalTradition
+import com.example.platform.notifications.ReminderScheduler
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.flow.*
@@ -28,7 +30,8 @@ data class ProfileUiState(
 class ProfileViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val festivalRepository: FestivalRepository,
-    private val cloudSyncRepository: CloudSyncRepository
+    private val cloudSyncRepository: CloudSyncRepository,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProfileUiState())
@@ -64,6 +67,7 @@ class ProfileViewModel(
         }
         viewModelScope.launch {
             userPreferencesRepository.updateTraditions(updated)
+            rescheduleNotificationsIfContextAvailable()
             syncIfSignedIn()
         }
     }
@@ -72,6 +76,7 @@ class ProfileViewModel(
         viewModelScope.launch {
             val updated = userPreferencesRepository.updateHostCity(cityId)
             if (updated) {
+                rescheduleNotificationsIfContextAvailable()
                 syncIfSignedIn()
             } else {
                 _uiState.update { it.copy(syncStatusMessage = "Unknown city ID: $cityId") }
@@ -82,25 +87,8 @@ class ProfileViewModel(
     fun updateHostCityObject(city: City) {
         viewModelScope.launch {
             userPreferencesRepository.updateHostCityObject(city)
+            rescheduleNotificationsIfContextAvailable()
             syncIfSignedIn()
-        }
-    }
-
-    fun detectCityFromLocation(context: android.content.Context) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(syncStatusMessage = "Detecting city via GPS…") }
-            when (val res = com.example.platform.location.LocationCityResolver.detectUserCity(context)) {
-                is com.example.platform.location.LocationCityResult.Success -> {
-                    userPreferencesRepository.updateHostCityObject(res.city)
-                    _uiState.update {
-                        it.copy(syncStatusMessage = "Location updated to ${res.city.name} (${res.city.state}) via ${res.sourceLabel}")
-                    }
-                    syncIfSignedIn()
-                }
-                is com.example.platform.location.LocationCityResult.Error -> {
-                    _uiState.update { it.copy(syncStatusMessage = res.message) }
-                }
-            }
         }
     }
 
@@ -114,13 +102,29 @@ class ProfileViewModel(
     fun updateReminders(dayBefore: Boolean, morningOf: Boolean, muhuratStart: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.updateReminders(dayBefore, morningOf, muhuratStart)
+            rescheduleNotificationsIfContextAvailable()
             syncIfSignedIn()
+        }
+    }
+
+    fun updateDailyMorningSettings(enabled: Boolean, hour: Int, minute: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.updateDailyMorningSettings(enabled, hour, minute)
+            rescheduleNotificationsIfContextAvailable()
+            syncIfSignedIn()
+        }
+    }
+
+    fun markNotificationRationaleShown() {
+        viewModelScope.launch {
+            userPreferencesRepository.markNotificationRationaleShown()
         }
     }
 
     fun deleteCustomReminder(entry: CustomReminderEntry) {
         viewModelScope.launch {
             userPreferencesRepository.deleteCustomReminder(entry.festivalId, entry.triggerType)
+            rescheduleNotificationsIfContextAvailable()
             syncIfSignedIn()
         }
     }
@@ -165,6 +169,11 @@ class ProfileViewModel(
         if (cloudSyncRepository.isUserSignedIn) {
             triggerSync()
         }
+    }
+
+    private suspend fun rescheduleNotificationsIfContextAvailable() {
+        val ctx = appContext ?: return
+        runCatching { ReminderScheduler.rescheduleFromCurrentPreferences(ctx) }
     }
 
     fun showDeleteDialog(show: Boolean) {

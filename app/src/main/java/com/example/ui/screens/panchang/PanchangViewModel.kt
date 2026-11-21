@@ -1,5 +1,6 @@
 package com.example.ui.screens.panchang
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.preferences.UserPreferences
@@ -9,6 +10,7 @@ import com.example.panchang.City
 import com.example.panchang.PanchangDay
 import com.example.panchang.PanchangEngine
 import com.example.panchang.TimeWindow
+import com.example.platform.notifications.ReminderScheduler
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -24,7 +26,8 @@ data class PanchangUiState(
 
 class PanchangViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
-    private val festivalRepository: FestivalRepository? = null
+    private val festivalRepository: FestivalRepository? = null,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow<LocalDate?>(null)
@@ -79,11 +82,14 @@ class PanchangViewModel(
 
     /**
      * Blueprint Section 11.2: Changing the city recalculates Panchang for the currently
-     * selected date without silently switching dates.
+     * selected date without silently switching dates, and reschedules future notifications.
      */
     fun selectCity(city: City) {
         viewModelScope.launch {
             userPreferencesRepository.updateHostCityObject(city)
+            appContext?.let { ctx ->
+                runCatching { ReminderScheduler.rescheduleFromCurrentPreferences(ctx) }
+            }
         }
     }
 }

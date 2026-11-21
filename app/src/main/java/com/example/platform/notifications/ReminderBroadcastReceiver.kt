@@ -9,9 +9,33 @@ import android.net.Uri
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class ReminderBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ReminderScheduler.ACTION_DAILY_MORNING_PANCHANG) {
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    ReminderScheduler.deliverDailyMorningNotification(
+                        context = context.applicationContext,
+                        mode = SchedulingMode.EXACT_ALARM
+                    )
+                } finally {
+                    pendingResult?.finish()
+                }
+            }
+            return
+        }
+
+        if (!ReminderScheduler.hasPostNotificationsPermission(context) ||
+            !ReminderScheduler.areNotificationsEnabledInSystem(context)
+        ) {
+            return
+        }
+
         val festivalId = com.example.platform.security.SecurityIntegrityManager.sanitizeFestivalId(
             intent.getStringExtra("festival_id")
         ) ?: "general"

@@ -1,5 +1,6 @@
 package com.example.ui.screens.today
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.preferences.CustomReminderEntry
@@ -10,6 +11,7 @@ import com.example.domain.model.FestivalOccurrence
 import com.example.panchang.City
 import com.example.panchang.PanchangDay
 import com.example.panchang.PanchangEngine
+import com.example.platform.notifications.ReminderScheduler
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -30,7 +32,8 @@ data class TodayUiState(
 
 class TodayViewModel(
     private val festivalRepository: FestivalRepository,
-    private val userPreferencesRepository: UserPreferencesRepository
+    private val userPreferencesRepository: UserPreferencesRepository,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val initialToday = PanchangEngine.localDateForCity(City.DELHI)
@@ -114,6 +117,7 @@ class TodayViewModel(
     fun selectCity(city: City) {
         viewModelScope.launch {
             userPreferencesRepository.updateHostCityObject(city)
+            rescheduleNotificationsIfContextAvailable()
         }
     }
 
@@ -126,12 +130,32 @@ class TodayViewModel(
     fun deleteCustomReminder(entry: CustomReminderEntry) {
         viewModelScope.launch {
             userPreferencesRepository.deleteCustomReminder(entry.festivalId, entry.triggerType)
+            rescheduleNotificationsIfContextAvailable()
         }
     }
 
     fun updateGlobalReminderRules(dayBefore: Boolean, morningOf: Boolean, muhuratStart: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.updateReminders(dayBefore, morningOf, muhuratStart)
+            rescheduleNotificationsIfContextAvailable()
         }
+    }
+
+    fun updateDailyMorningSettings(enabled: Boolean, hour: Int, minute: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.updateDailyMorningSettings(enabled, hour, minute)
+            rescheduleNotificationsIfContextAvailable()
+        }
+    }
+
+    fun markNotificationRationaleShown() {
+        viewModelScope.launch {
+            userPreferencesRepository.markNotificationRationaleShown()
+        }
+    }
+
+    private suspend fun rescheduleNotificationsIfContextAvailable() {
+        val ctx = appContext ?: return
+        runCatching { ReminderScheduler.rescheduleFromCurrentPreferences(ctx) }
     }
 }

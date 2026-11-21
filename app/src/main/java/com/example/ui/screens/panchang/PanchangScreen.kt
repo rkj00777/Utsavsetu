@@ -176,6 +176,7 @@ fun PanchangScreen(
                         if (cityMenuExpanded) {
                             CitySelectionDialog(
                                 currentCity = state.hostCity,
+                                recentCities = state.userPreferences?.recentCities.orEmpty(),
                                 onCitySelected = { city ->
                                     viewModel.selectCity(city)
                                     cityMenuExpanded = false
@@ -675,9 +676,19 @@ fun PanchangScreen(
                         testTagName = "about_timings_card"
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val latDir = if (state.hostCity.latitude >= 0.0) "N" else "S"
+                            val lonDir = if (state.hostCity.longitude >= 0.0) "E" else "W"
+                            val coordSummary = String.format(
+                                Locale.US,
+                                "%.4f° %s, %.4f° %s",
+                                kotlin.math.abs(state.hostCity.latitude),
+                                latDir,
+                                kotlin.math.abs(state.hostCity.longitude),
+                                lonDir
+                            )
                             TrustMetadataRow(
                                 label = strings.locationSectionHeader,
-                                value = "$localizedCity, $localizedState (${state.hostCity.latitude}° N, ${state.hostCity.longitude}° E, ${state.hostCity.timeZoneId})"
+                                value = "$localizedCity, $localizedState, ${state.hostCity.country} ($coordSummary · ${state.hostCity.timeZoneId})"
                             )
                             TrustMetadataRow(
                                 label = "Regional Convention",

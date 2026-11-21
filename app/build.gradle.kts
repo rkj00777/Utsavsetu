@@ -47,12 +47,17 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       isShrinkResources = false
+      buildConfigField("boolean", "USE_TEST_ADS", "false")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      val useTestAds = project.findProperty("USE_TEST_ADS")
+        ?.toString()
+        ?.equals("true", ignoreCase = true) == true
+      buildConfigField("boolean", "USE_TEST_ADS", useTestAds.toString())
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("debugConfig")
@@ -137,7 +142,8 @@ dependencies {
   // implementation(libs.logging.interceptor)
   // implementation(libs.moshi.kotlin)
   // implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
+  implementation(libs.play.services.location)
+  implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

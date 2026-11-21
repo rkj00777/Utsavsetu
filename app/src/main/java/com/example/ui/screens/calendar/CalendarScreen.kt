@@ -38,6 +38,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.FestivalOccurrence
 import com.example.panchang.RegionalTradition
+import com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
+import com.example.platform.ads.FestivalFeedAdPlacer
+import com.example.platform.ads.FestivalFeedEntry
+import com.example.ui.components.AdMobNativeAdCard
 import com.example.ui.components.AnimatedCollapsibleSection
 import com.example.ui.components.FestivalArtworkBanner
 import com.example.ui.components.FestivalCard
@@ -591,25 +595,51 @@ fun CalendarScreen(
                 }
             }
         } else {
-            items(
+            val calendarFeedKey = "calendar_month_${state.currentMonth}_${if (state.isListView) "agenda" else "grid"}"
+            val calendarEntries = FestivalFeedAdPlacer.interleaveFlat(
+                feedKey = calendarFeedKey,
                 items = state.monthOccurrences,
-                key = { "${it.festival.id}_${it.date}" }
-            ) { occurrence ->
-                Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                    if (state.isListView) {
-                        AgendaEventRowCard(
-                            occurrence = occurrence,
-                            hasReminder = state.scheduledReminderFestivalIds.contains(occurrence.festival.id),
-                            onClick = { onNavigateToFestival(occurrence.festival.id) }
-                        )
-                    } else {
-                        FestivalCard(
-                            occurrence = occurrence,
-                            referenceDate = cityToday,
-                            onClick = { onNavigateToFestival(occurrence.festival.id) },
-                            onShareClick = { shareTargetOccurrence = occurrence }
+                itemKeyProvider = { "${it.festival.id}_${it.date}" }
+            )
+            items(
+                items = calendarEntries,
+                key = { entry ->
+                    when (entry) {
+                        is FestivalFeedEntry.FestivalItem -> entry.itemKey
+                        is FestivalFeedEntry.NativeAdSlot -> entry.itemKey
+                        is FestivalFeedEntry.SectionHeader -> entry.headerKey
+                    }
+                }
+            ) { entry ->
+                when (entry) {
+                    is FestivalFeedEntry.FestivalItem -> {
+                        val occurrence = entry.item
+                        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                            if (state.isListView) {
+                                AgendaEventRowCard(
+                                    occurrence = occurrence,
+                                    hasReminder = state.scheduledReminderFestivalIds.contains(occurrence.festival.id),
+                                    onClick = { onNavigateToFestival(occurrence.festival.id) }
+                                )
+                            } else {
+                                FestivalCard(
+                                    occurrence = occurrence,
+                                    referenceDate = cityToday,
+                                    onClick = { onNavigateToFestival(occurrence.festival.id) },
+                                    onShareClick = { shareTargetOccurrence = occurrence }
+                                )
+                            }
+                        }
+                    }
+                    is FestivalFeedEntry.NativeAdSlot -> {
+                        AdMobNativeAdCard(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                            adUnitId = ADMOB_NATIVE_AD_UNIT_ID,
+                            slotKey = entry.registrySlotKey,
+                            showDismissButton = true
                         )
                     }
+                    is FestivalFeedEntry.SectionHeader -> Unit
                 }
             }
         }

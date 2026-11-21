@@ -372,24 +372,58 @@ class ExampleRobolectricTest {
     fun `test google admob native ad integration and unit id configuration`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
 
-        // 1. Verify Manifest contains com.google.android.gms.ads.APPLICATION_ID
+        // 1. Verify Manifest contains production com.google.android.gms.ads.APPLICATION_ID
         val appInfo = context.packageManager.getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
         val admobAppId = appInfo.metaData?.getString("com.google.android.gms.ads.APPLICATION_ID")
         assertTrue("AdMob APPLICATION_ID must be configured in AndroidManifest.xml", !admobAppId.isNullOrBlank())
         assertEquals("ca-app-pub-4148485857290947~5018048959", admobAppId)
 
-        // 2. Verify Google AdMob production native ad unit ID constant
+        // 2. Verify Google AdMob production and official test native ad unit ID constants
         assertEquals(
             "ca-app-pub-4148485857290947/5042099689",
             com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
         )
+        assertEquals(
+            "ca-app-pub-3940256099942544/2247696110",
+            com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
+        )
 
-        // 3. Verify AdMobNativeAdLoader initializes safely
+        // 3. Verify release builds ALWAYS resolve production ID and debug builds default to production unless USE_TEST_ADS=true
+        assertEquals(
+            com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID,
+            com.example.platform.ads.resolveNativeAdUnitId(
+                requestedAdUnitId = com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID,
+                isDebug = false,
+                useTestAds = true
+            )
+        )
+        assertEquals(
+            com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID,
+            com.example.platform.ads.resolveNativeAdUnitId(
+                requestedAdUnitId = com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID,
+                isDebug = true,
+                useTestAds = false
+            )
+        )
+        assertEquals(
+            com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID,
+            com.example.platform.ads.resolveNativeAdUnitId(
+                requestedAdUnitId = com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID,
+                isDebug = true,
+                useTestAds = true
+            )
+        )
+
+        // 4. Verify AdMobNativeAdLoader starts IDLE (visibility-gated) and initializes safely
+        val effectiveUnitId = com.example.platform.ads.resolveNativeAdUnitId()
         val loader = com.example.platform.ads.AdMobNativeAdLoader(
             context = context,
-            adUnitId = com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
+            adUnitId = effectiveUnitId
         )
-        assertEquals("ca-app-pub-4148485857290947/5042099689", loader.state.adUnitId)
+        assertEquals(effectiveUnitId, loader.state.adUnitId)
+        assertEquals(com.example.platform.ads.NativeAdLoadStatus.IDLE, loader.state.status)
+        assertEquals(0, loader.state.loadRequestCount)
+        assertEquals(null, loader.state.nativeAd)
         loader.destroy()
     }
 }

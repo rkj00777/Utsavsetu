@@ -306,30 +306,100 @@ data class City(
             } ?: DEFAULT_CITY
         }
 
+        fun resolveTimeZoneForCoordinates(
+            latitude: Double,
+            longitude: Double,
+            countryHint: String? = null
+        ): String {
+            val normalizedCountry = countryHint?.trim()?.lowercase()
+            if (normalizedCountry == "india" ||
+                (latitude in 6.0..37.5 && longitude in 68.0..97.5 && (normalizedCountry.isNullOrBlank() || normalizedCountry == "in"))
+            ) {
+                return "Asia/Kolkata"
+            }
+
+            val nearest = findNearestCity(latitude, longitude)
+            val distKm = haversineDistanceKm(latitude, longitude, nearest.latitude, nearest.longitude)
+            if (distKm <= 500.0 && (normalizedCountry.isNullOrBlank() || nearest.country.lowercase() == normalizedCountry)) {
+                return nearest.timeZoneId
+            }
+
+            return when (normalizedCountry) {
+                "united kingdom", "uk", "great britain" -> "Europe/London"
+                "united arab emirates", "uae" -> "Asia/Dubai"
+                "singapore" -> "Asia/Singapore"
+                "malaysia" -> "Asia/Kuala_Lumpur"
+                "nepal" -> "Asia/Kathmandu"
+                "sri lanka" -> "Asia/Colombo"
+                "japan" -> "Asia/Tokyo"
+                "germany", "france", "italy", "spain", "netherlands", "switzerland" -> "Europe/Berlin"
+                "south africa" -> "Africa/Johannesburg"
+                "mauritius" -> "Indian/Mauritius"
+                "new zealand" -> "Pacific/Auckland"
+                "australia" -> when {
+                    longitude < 125.0 -> "Australia/Perth"
+                    longitude < 141.0 -> "Australia/Adelaide"
+                    else -> "Australia/Sydney"
+                }
+                "united states", "usa", "us", "canada" -> when {
+                    longitude <= -115.0 -> "America/Los_Angeles"
+                    longitude <= -102.0 -> "America/Denver"
+                    longitude <= -86.0 -> "America/Chicago"
+                    else -> "America/New_York"
+                }
+                else -> {
+                    val offsetHours = kotlin.math.round(longitude / 15.0).toInt().coerceIn(-12, 14)
+                    if (offsetHours == 0) {
+                        "UTC"
+                    } else if (offsetHours > 0) {
+                        // POSIX Etc/GMT sign is inverted: Etc/GMT-5 == UTC+5
+                        "Etc/GMT-$offsetHours"
+                    } else {
+                        "Etc/GMT+${abs(offsetHours)}"
+                    }
+                }
+            }
+        }
+
         fun createCustomGpsCity(
             latitude: Double,
             longitude: Double,
             name: String? = null,
             state: String? = null,
             district: String? = null,
-            country: String = "India",
+            country: String? = null,
             timeZoneId: String? = null,
             convention: RegionalPanchangConvention? = null
         ): City {
             val nearest = findNearestCity(latitude, longitude)
-            val resolvedName = name?.takeIf { it.isNotBlank() } ?: "GPS (${String.format("%.2f°N, %.2f°E", latitude, longitude)})"
-            val resolvedState = state?.takeIf { it.isNotBlank() } ?: nearest.state
-            val resolvedDistrict = district?.takeIf { it.isNotBlank() } ?: nearest.district
-            val resolvedTz = timeZoneId ?: nearest.timeZoneId
-            val resolvedConvention = convention ?: nearest.panchangConvention
-            val customId = "gps_${abs(latitude).toString().replace(".", "_")}_${abs(longitude).toString().replace(".", "_")}"
+            val distKm = haversineDistanceKm(latitude, longitude, nearest.latitude, nearest.longitude)
+            val isNearKnown = distKm <= 350.0
+            val latDir = if (latitude >= 0) "N" else "S"
+            val lonDir = if (longitude >= 0) "E" else "W"
+            val resolvedName = name?.takeIf { it.isNotBlank() }
+                ?: String.format(java.util.Locale.US, "GPS (%.2f°%s, %.2f°%s)", abs(latitude), latDir, abs(longitude), lonDir)
+            val resolvedCountry = country?.takeIf { it.isNotBlank() }
+                ?: if (isNearKnown) nearest.country else "Worldwide"
+            val resolvedState = state?.takeIf { it.isNotBlank() }
+                ?: if (isNearKnown) nearest.state else resolvedCountry
+            val resolvedDistrict = district?.takeIf { it.isNotBlank() } ?: resolvedState
+            val resolvedTz = timeZoneId?.takeIf { it.isNotBlank() }
+                ?: resolveTimeZoneForCoordinates(latitude, longitude, resolvedCountry)
+            val resolvedConvention = convention ?: if (resolvedCountry.equals("India", ignoreCase = true) || isNearKnown) {
+                nearest.panchangConvention
+            } else {
+                RegionalPanchangConvention.DIASPORA_LOCAL_SOLAR
+            }
+            val latKey = String.format(java.util.Locale.US, "%.4f", latitude).replace("-", "s").replace(".", "_")
+            val lonKey = String.format(java.util.Locale.US, "%.4f", longitude).replace("-", "w").replace(".", "_")
+            val customId = "gps_${latKey}_${lonKey}"
 
             return City(
                 id = customId,
                 name = resolvedName,
                 state = resolvedState,
                 district = resolvedDistrict,
-                country = country,
+                country = resolvedCountry,
                 latitude = latitude,
                 longitude = longitude,
                 timeZoneId = resolvedTz,

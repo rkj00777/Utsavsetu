@@ -23,7 +23,11 @@ class AppViewModelFactory(
                 SetupViewModel(appContainer.userPreferencesRepository) as T
             }
             modelClass.isAssignableFrom(TodayViewModel::class.java) -> {
-                TodayViewModel(appContainer.festivalRepository, appContainer.userPreferencesRepository) as T
+                TodayViewModel(
+                    festivalRepository = appContainer.festivalRepository,
+                    userPreferencesRepository = appContainer.userPreferencesRepository,
+                    appContext = appContainer.context.applicationContext
+                ) as T
             }
             modelClass.isAssignableFrom(CalendarViewModel::class.java) -> {
                 CalendarViewModel(appContainer.festivalRepository, appContainer.userPreferencesRepository) as T
@@ -34,7 +38,8 @@ class AppViewModelFactory(
             modelClass.isAssignableFrom(PanchangViewModel::class.java) -> {
                 PanchangViewModel(
                     userPreferencesRepository = appContainer.userPreferencesRepository,
-                    festivalRepository = appContainer.festivalRepository
+                    festivalRepository = appContainer.festivalRepository,
+                    appContext = appContainer.context.applicationContext
                 ) as T
             }
             modelClass.isAssignableFrom(DetailViewModel::class.java) -> {
@@ -49,7 +54,8 @@ class AppViewModelFactory(
                 ProfileViewModel(
                     userPreferencesRepository = appContainer.userPreferencesRepository,
                     festivalRepository = appContainer.festivalRepository,
-                    cloudSyncRepository = appContainer.cloudSyncRepository
+                    cloudSyncRepository = appContainer.cloudSyncRepository,
+                    appContext = appContainer.context.applicationContext
                 ) as T
             }
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

@@ -9,8 +9,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
+import com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
+import com.example.platform.ads.FestivalFeedAdPlacer
+import com.example.platform.ads.FestivalFeedEntry
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -117,6 +118,7 @@ fun TodayScreen(
             dayBeforeEnabled = prefs.dayBeforeReminder,
             morningOfEnabled = prefs.morningOfReminder,
             muhuratStartEnabled = prefs.muhuratStartReminder,
+            userPreferences = prefs,
             onDeleteReminder = { entry ->
                 com.example.platform.notifications.ReminderScheduler.cancelCustomReminder(
                     context = context,
@@ -126,6 +128,10 @@ fun TodayScreen(
                 viewModel.deleteCustomReminder(entry)
             },
             onUpdateGlobalRules = { d, m, s -> viewModel.updateGlobalReminderRules(d, m, s) },
+            onUpdateDailyMorning = { enabled, hour, minute ->
+                viewModel.updateDailyMorningSettings(enabled, hour, minute)
+            },
+            onMarkRationaleShown = { viewModel.markNotificationRationaleShown() },
             onDismiss = { showReminderCentre = false }
         )
     }
@@ -253,6 +259,7 @@ fun TodayScreen(
                     if (cityMenuExpanded) {
                         CitySelectionDialog(
                             currentCity = prefs?.hostCity ?: City.DELHI,
+                            recentCities = prefs?.recentCities.orEmpty(),
                             onCitySelected = { city ->
                                 viewModel.selectCity(city)
                                 cityMenuExpanded = false
@@ -459,26 +466,43 @@ fun TodayScreen(
         val listToShow = state.upcomingOccurrences.ifEmpty {
             state.nextSevenDaysOccurrences
         }
-
-        itemsIndexed(
+        val upcomingFeedEntries = FestivalFeedAdPlacer.interleaveFlat(
+            feedKey = "home_upcoming",
             items = listToShow,
-            key = { _, it -> "${it.festival.id}_${it.date}" }
-        ) { index, occurrence ->
-            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                FestivalCard(
-                    occurrence = occurrence,
-                    referenceDate = state.todayDate,
-                    onClick = { onNavigateToFestival(occurrence.festival.id) },
-                    onShareClick = { shareTargetOccurrence = occurrence }
-                )
+            itemKeyProvider = { "${it.festival.id}_${it.date}" }
+        )
+
+        items(
+            items = upcomingFeedEntries,
+            key = { entry ->
+                when (entry) {
+                    is FestivalFeedEntry.FestivalItem -> entry.itemKey
+                    is FestivalFeedEntry.NativeAdSlot -> entry.itemKey
+                    is FestivalFeedEntry.SectionHeader -> entry.headerKey
+                }
             }
-            if (index == 0) {
-                Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+        ) { entry ->
+            when (entry) {
+                is FestivalFeedEntry.FestivalItem -> {
+                    val occurrence = entry.item
+                    Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                        FestivalCard(
+                            occurrence = occurrence,
+                            referenceDate = state.todayDate,
+                            onClick = { onNavigateToFestival(occurrence.festival.id) },
+                            onShareClick = { shareTargetOccurrence = occurrence }
+                        )
+                    }
+                }
+                is FestivalFeedEntry.NativeAdSlot -> {
                     AdMobNativeAdCard(
-                        adUnitId = ADMOB_NATIVE_TEST_UNIT_ID,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                        adUnitId = ADMOB_NATIVE_AD_UNIT_ID,
+                        slotKey = entry.registrySlotKey,
                         showDismissButton = true
                     )
                 }
+                is FestivalFeedEntry.SectionHeader -> Unit
             }
         }
     }
@@ -724,8 +748,11 @@ private fun TodaySignatureHeroCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    val abhijitText = panchang.abhijitMuhurat?.let {
+                        " · ${strings.abhijitMuhuratLabel}: ${it.format()}"
+                    } ?: ""
                     Text(
-                        text = "${strings.nakshatraLabel}: ${UtsavLocalizationEngine.localizeNakshatraName(panchang.nakshatra.name, strings.language)} · ${strings.yogaLabel}: ${UtsavLocalizationEngine.localizeYogaName(panchang.yoga.name, strings.language)} · ${strings.abhijitMuhuratLabel}: ${panchang.abhijitMuhurat?.format() ?: "11:45 - 12:30"}",
+                        text = "${strings.nakshatraLabel}: ${UtsavLocalizationEngine.localizeNakshatraName(panchang.nakshatra.name, strings.language)} · ${strings.yogaLabel}: ${UtsavLocalizationEngine.localizeYogaName(panchang.yoga.name, strings.language)}$abhijitText",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

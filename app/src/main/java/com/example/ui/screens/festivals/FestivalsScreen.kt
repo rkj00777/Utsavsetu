@@ -6,8 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import com.example.platform.ads.ADMOB_NATIVE_TEST_UNIT_ID
+import com.example.platform.ads.ADMOB_NATIVE_AD_UNIT_ID
+import com.example.platform.ads.FestivalFeedAdPlacer
+import com.example.platform.ads.FestivalFeedEntry
 import com.example.ui.components.AdMobNativeAdCard
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -382,24 +383,44 @@ fun FestivalsScreen(
                     }
                 }
             } else {
-                itemsIndexed(
+                val searchFeedEntries = FestivalFeedAdPlacer.interleaveFlat(
+                    feedKey = "festivals_search",
                     items = state.searchResults,
-                    key = { _, it -> it.festival.id }
-                ) { index, occurrence ->
-                    val matchedAlias = state.matchedAliases[occurrence.festival.id]
-                    Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                        FestivalCard(
-                            occurrence = occurrence,
-                            referenceDate = com.example.panchang.PanchangEngine.localDateForCity(state.hostCity),
-                            matchedRegionalName = matchedAlias,
-                            onClick = { onNavigateToFestival(occurrence.festival.id) },
-                            onShareClick = { shareTargetOccurrence = occurrence }
-                        )
-                    }
-                    if (index == 1) {
-                        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                            AdMobNativeAdCard(adUnitId = ADMOB_NATIVE_TEST_UNIT_ID)
+                    itemKeyProvider = { "${it.festival.id}_${it.date}" }
+                )
+                items(
+                    items = searchFeedEntries,
+                    key = { entry ->
+                        when (entry) {
+                            is FestivalFeedEntry.FestivalItem -> entry.itemKey
+                            is FestivalFeedEntry.NativeAdSlot -> entry.itemKey
+                            is FestivalFeedEntry.SectionHeader -> entry.headerKey
                         }
+                    }
+                ) { entry ->
+                    when (entry) {
+                        is FestivalFeedEntry.FestivalItem -> {
+                            val occurrence = entry.item
+                            val matchedAlias = state.matchedAliases[occurrence.festival.id]
+                            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                                FestivalCard(
+                                    occurrence = occurrence,
+                                    referenceDate = com.example.panchang.PanchangEngine.localDateForCity(state.hostCity),
+                                    matchedRegionalName = matchedAlias,
+                                    onClick = { onNavigateToFestival(occurrence.festival.id) },
+                                    onShareClick = { shareTargetOccurrence = occurrence }
+                                )
+                            }
+                        }
+                        is FestivalFeedEntry.NativeAdSlot -> {
+                            AdMobNativeAdCard(
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                                adUnitId = ADMOB_NATIVE_AD_UNIT_ID,
+                                slotKey = entry.registrySlotKey,
+                                showDismissButton = true
+                            )
+                        }
+                        is FestivalFeedEntry.SectionHeader -> Unit
                     }
                 }
 
@@ -492,10 +513,14 @@ fun FestivalsScreen(
                     }
                 }
             } else {
-                state.groupedFestivals.forEach { group ->
-                    item(key = "header_${group.monthName}_${group.year}") {
+                val categoryFeedKey = "festivals_category_${state.activeCategory.name.lowercase(Locale.US)}"
+                val groupedFeedEntries = FestivalFeedAdPlacer.interleaveGrouped(
+                    feedKey = categoryFeedKey,
+                    groups = state.groupedFestivals,
+                    headerKeyProvider = { group -> "${group.monthName}_${group.year}" },
+                    headerTitleProvider = { group ->
                         val firstOccDate = group.occurrences.firstOrNull()?.date
-                        val localizedGroupHeader = if (firstOccDate != null) {
+                        if (firstOccDate != null) {
                             UtsavLocalizationEngine.formatYearMonth(
                                 YearMonth.of(firstOccDate.year, firstOccDate.monthValue),
                                 "MMMM yyyy",
@@ -504,30 +529,49 @@ fun FestivalsScreen(
                         } else {
                             "${group.monthName} ${group.year}"
                         }
-                        Text(
-                            text = localizedGroupHeader,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)
-                        )
+                    },
+                    itemsProvider = { group -> group.occurrences },
+                    itemKeyProvider = { group, occ -> "${group.monthName}_${group.year}_${occ.festival.id}_${occ.date}" }
+                )
+
+                items(
+                    items = groupedFeedEntries,
+                    key = { entry ->
+                        when (entry) {
+                            is FestivalFeedEntry.SectionHeader -> entry.headerKey
+                            is FestivalFeedEntry.FestivalItem -> entry.itemKey
+                            is FestivalFeedEntry.NativeAdSlot -> entry.itemKey
+                        }
                     }
-                    itemsIndexed(
-                        items = group.occurrences,
-                        key = { _, it -> "${group.monthName}_${it.festival.id}" }
-                    ) { index, occurrence ->
-                        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                            FestivalCard(
-                                occurrence = occurrence,
-                                referenceDate = com.example.panchang.PanchangEngine.localDateForCity(state.hostCity),
-                                onClick = { onNavigateToFestival(occurrence.festival.id) },
-                                onShareClick = { shareTargetOccurrence = occurrence }
+                ) { entry ->
+                    when (entry) {
+                        is FestivalFeedEntry.SectionHeader -> {
+                            Text(
+                                text = entry.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)
                             )
                         }
-                        if (index == 1 && group == state.groupedFestivals.firstOrNull()) {
-                            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                                AdMobNativeAdCard(adUnitId = ADMOB_NATIVE_TEST_UNIT_ID)
+                        is FestivalFeedEntry.FestivalItem -> {
+                            val occurrence = entry.item
+                            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                                FestivalCard(
+                                    occurrence = occurrence,
+                                    referenceDate = com.example.panchang.PanchangEngine.localDateForCity(state.hostCity),
+                                    onClick = { onNavigateToFestival(occurrence.festival.id) },
+                                    onShareClick = { shareTargetOccurrence = occurrence }
+                                )
                             }
+                        }
+                        is FestivalFeedEntry.NativeAdSlot -> {
+                            AdMobNativeAdCard(
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                                adUnitId = ADMOB_NATIVE_AD_UNIT_ID,
+                                slotKey = entry.registrySlotKey,
+                                showDismissButton = true
+                            )
                         }
                     }
                 }

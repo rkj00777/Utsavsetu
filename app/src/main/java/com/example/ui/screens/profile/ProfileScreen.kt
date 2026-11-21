@@ -32,6 +32,8 @@ import com.example.data.preferences.AppLanguage
 import com.example.panchang.City
 import com.example.panchang.RegionalTradition
 import com.example.platform.auth.AuthHelper
+import com.example.platform.location.LocationCityResolver
+import com.example.platform.notifications.DailyMorningNotificationEngine
 import com.example.ui.components.AnimatedCollapsibleSection
 import com.example.ui.components.CitySelectionDialog
 import com.example.ui.components.FestivalArtworkBanner
@@ -43,6 +45,8 @@ import com.example.ui.theme.LocalLiquidGlassTokens
 import com.example.ui.theme.LocalUtsavStrings
 import com.example.ui.theme.TulsiGreen
 import com.example.ui.theme.UtsavLocalizationEngine
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Blueprint Section 14 (Screen 12): Profile & Settings.
@@ -62,6 +66,7 @@ fun ProfileScreen(
     val glassTokens = LocalLiquidGlassTokens.current
 
     var cityMenuExpanded by remember { mutableStateOf(false) }
+    var autoTriggerGpsInDialog by remember { mutableStateOf(false) }
     var languageMenuExpanded by remember { mutableStateOf(false) }
     var showReminderCentre by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
@@ -69,18 +74,13 @@ fun ProfileScreen(
     var showSystemHealthDialog by remember { mutableStateOf(false) }
     val strings = com.example.ui.theme.LocalUtsavStrings.current
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        viewModel.detectCityFromLocation(context)
-    }
-
     if (showReminderCentre) {
         ReminderCentreDialog(
             reminders = prefs.customReminders,
             dayBeforeEnabled = prefs.dayBeforeReminder,
             morningOfEnabled = prefs.morningOfReminder,
             muhuratStartEnabled = prefs.muhuratStartReminder,
+            userPreferences = prefs,
             onDeleteReminder = { entry ->
                 com.example.platform.notifications.ReminderScheduler.cancelCustomReminder(
                     context = context,
@@ -90,6 +90,10 @@ fun ProfileScreen(
                 viewModel.deleteCustomReminder(entry)
             },
             onUpdateGlobalRules = { d, m, s -> viewModel.updateReminders(d, m, s) },
+            onUpdateDailyMorning = { enabled, hour, minute ->
+                viewModel.updateDailyMorningSettings(enabled, hour, minute)
+            },
+            onMarkRationaleShown = { viewModel.markNotificationRationaleShown() },
             onDismiss = { showReminderCentre = false }
         )
     }
@@ -375,18 +379,10 @@ fun ProfileScreen(
 
             // 3. Location (City and Region - Primary Always Visible)
             ProfileSectionCard(title = strings.locationSectionHeader) {
-                OutlinedButton(
+                Button(
                     onClick = {
-                        if (com.example.platform.location.LocationCityResolver.hasLocationPermission(context)) {
-                            viewModel.detectCityFromLocation(context)
-                        } else {
-                            locationPermissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                            )
-                        }
+                        autoTriggerGpsInDialog = true
+                        cityMenuExpanded = true
                     },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -407,11 +403,27 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Box(modifier = Modifier.fillMaxWidth()) {
+                    val latDir = if (prefs.hostCity.latitude >= 0.0) "N" else "S"
+                    val lonDir = if (prefs.hostCity.longitude >= 0.0) "E" else "W"
+                    val coordSummary = String.format(
+                        Locale.US,
+                        "%.4f° %s, %.4f° %s",
+                        abs(prefs.hostCity.latitude),
+                        latDir,
+                        abs(prefs.hostCity.longitude),
+                        lonDir
+                    )
+                    val tzSummary = LocationCityResolver.formatTimeZoneSummary(prefs.hostCity.timeZoneId)
+
                     OutlinedCard(
-                        onClick = { cityMenuExpanded = true },
+                        onClick = {
+                            autoTriggerGpsInDialog = false
+                            cityMenuExpanded = true
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 48.dp),
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("profile_selected_location_card"),
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.outlinedCardColors(
                             containerColor = glassTokens.solidElevatedContainer
@@ -441,8 +453,13 @@ fun ProfileScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "${UtsavLocalizationEngine.localizeStateName(prefs.hostCity.state, strings.language)} · IST (UTC+5:30)",
+                                        text = "${UtsavLocalizationEngine.localizeStateName(prefs.hostCity.state, strings.language)}, ${prefs.hostCity.country}",
                                         style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "$coordSummary · $tzSummary",
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -462,15 +479,17 @@ fun ProfileScreen(
                     if (cityMenuExpanded) {
                         CitySelectionDialog(
                             currentCity = prefs.hostCity,
+                            recentCities = prefs.recentCities,
+                            autoTriggerGpsOnOpen = autoTriggerGpsInDialog,
                             onCitySelected = { city ->
                                 viewModel.updateHostCityObject(city)
                                 cityMenuExpanded = false
+                                autoTriggerGpsInDialog = false
                             },
-                            onDetectGpsLocation = {
-                                viewModel.detectCityFromLocation(context)
+                            onDismiss = {
                                 cityMenuExpanded = false
-                            },
-                            onDismiss = { cityMenuExpanded = false }
+                                autoTriggerGpsInDialog = false
+                            }
                         )
                     }
                 }
@@ -673,10 +692,15 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 6. Collapsible Reminders Section
+            // 6. Collapsible Reminders & Daily Morning Notifications Section
+            val dailyMorningSummary = if (prefs.dailyMorningReminderEnabled) {
+                "Daily ${DailyMorningNotificationEngine.formatTimeOfDay(prefs.dailyMorningHour, prefs.dailyMorningMinute)} · ${prefs.customReminders.size} custom"
+            } else {
+                "Daily off · ${prefs.customReminders.size} custom"
+            }
             AnimatedCollapsibleSection(
                 title = strings.remindersSectionHeader,
-                subtitle = "${prefs.customReminders.size} active",
+                subtitle = dailyMorningSummary,
                 initiallyExpanded = false,
                 testTagName = "profile_reminders_dropdown"
             ) {
@@ -687,7 +711,7 @@ fun ProfileScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${strings.remindersSectionHeader} (${prefs.customReminders.size})",
+                            text = "Morning Schedule & Diagnostics",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
@@ -695,9 +719,10 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = { showReminderCentre = true },
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("profile_open_reminder_centre_button")
                         ) {
-                            Text("${strings.changeButton} →", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Manage →", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
 
@@ -705,6 +730,14 @@ fun ProfileScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Spacer(modifier = Modifier.height(6.dp))
 
+                    ProfileSwitchRow(
+                        title = "Daily Morning Festival & Muhurat",
+                        subtitle = "${DailyMorningNotificationEngine.formatTimeOfDay(prefs.dailyMorningHour, prefs.dailyMorningMinute)} (${prefs.hostCity.name})",
+                        checked = prefs.dailyMorningReminderEnabled,
+                        onCheckedChange = {
+                            viewModel.updateDailyMorningSettings(it, prefs.dailyMorningHour, prefs.dailyMorningMinute)
+                        }
+                    )
                     ProfileSwitchRow(
                         title = strings.dayBeforeReminderTitle,
                         subtitle = strings.tabSamagri,
