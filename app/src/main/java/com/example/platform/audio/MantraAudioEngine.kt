@@ -777,7 +777,38 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
         stopVoiceTrack()
 
-        // Tier 1: Try Ninada 24 kHz On-Device Neural ONNX synthesis if this language pack is installed
+        // Prepare the selected Ninada voice automatically on first Play. The model is cached
+        // privately on-device, so subsequent chants start without another download.
+        if (!ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
+            voicePlaybackJob = engineScope.launch {
+                _playbackState.value = _playbackState.value.copy(
+                    isSynthesizing = true,
+                    activeVoiceEngineLabel = "Preparing Ninada Neural Voice",
+                    audioStatusMessage = "Downloading the ${langCode.uppercase(Locale.ROOT)} voice for the first time…"
+                )
+                val download = ninadaEngine.downloadLanguagePack(langCode, activeVoiceGender)
+                if (generation != activePlaybackGeneration || !_playbackState.value.isPlaying) {
+                    return@launch
+                }
+                if (download.isSuccess && ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = false,
+                        audioStatusMessage = "Voice ready. Preparing your chant…"
+                    )
+                    speakCurrentRound()
+                } else {
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = false,
+                        activeVoiceEngineLabel = "Device TTS · ${langCode.uppercase(Locale.ROOT)}",
+                        audioStatusMessage = "Ninada voice download failed. Using the available device voice."
+                    )
+                    speakWithDeviceNeuralTts(mantra, langCode)
+                }
+            }
+            return
+        }
+
+        // Tier 1: Try Ninada 24 kHz On-Device Neural ONNX synthesis using the prepared language pack.
         if (ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
             voicePlaybackJob = engineScope.launch {
                 _playbackState.value = _playbackState.value.copy(isSynthesizing = true)
@@ -903,15 +934,33 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             while (isActive && generation == activePlaybackGeneration && offset < pcm16.size) {
                 val count = (pcm16.size - offset).coerceAtMost(chunkSize)
                 val written = track.write(pcm16, offset, count)
-                if (written < 0) break
-                offset += count
+                when {
+                    written < 0 -> return@withContext false
+                    written == 0 -> delay(4)
+                    else -> offset += written // AudioTrack may perform a partial write.
+                }
             }
 
-            // Allow hardware audio pipeline to drain final buffer smoothly
-            if (isActive && generation == activePlaybackGeneration) {
-                delay(180)
+            if (!isActive || generation != activePlaybackGeneration || offset != pcm16.size) {
+                return@withContext false
             }
-            offset >= pcm16.size
+
+            // Do not mark a Japa round complete merely because samples were queued. Wait until
+            // Android's playback head has consumed the entire PCM buffer.
+            val drainDeadlineNanos = System.nanoTime() +
+                ((pcm16.size.toDouble() / sampleRate.toDouble()) * 1_000_000_000.0).toLong() +
+                1_000_000_000L
+            var playedSamples = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+            while (
+                isActive &&
+                generation == activePlaybackGeneration &&
+                playedSamples < pcm16.size.toLong() &&
+                System.nanoTime() < drainDeadlineNanos
+            ) {
+                delay(10)
+                playedSamples = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+            }
+            isActive && generation == activePlaybackGeneration && playedSamples >= pcm16.size.toLong()
         } catch (ce: CancellationException) {
             throw ce
         } catch (t: Throwable) {
