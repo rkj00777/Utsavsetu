@@ -314,25 +314,50 @@ fun CitySelectionDialog(
                                         .fillMaxWidth()
                                         .testTag("gps_error_banner")
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.WarningAmber,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = gpsErrorMessage ?: "",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onErrorContainer,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        TextButton(onClick = { requestCurrentLocationFlow() }) {
-                                            Text("Retry", fontWeight = FontWeight.Bold)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.WarningAmber,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier
+                                                    .padding(top = 2.dp)
+                                                    .size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = gpsErrorMessage ?: "",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                softWrap = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { requestCurrentLocationFlow() },
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Refresh,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Retry", fontWeight = FontWeight.Bold, maxLines = 1)
+                                            }
                                         }
                                     }
                                 }
@@ -449,13 +474,25 @@ fun CitySelectionDialog(
                                     text = "POPULAR LOCATIONS",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    text = "${City.ALL_CITIES.size} offline cities searchable",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                ) {
+                                    Text(
+                                        text = "${City.ALL_CITIES.size} offline cities",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -627,8 +664,9 @@ fun CitySelectionDialog(
                                                     manualPreviewCity = null
                                                     manualCoordsError = null
                                                 },
-                                                label = { Text("Latitude (-90 to +90)") },
-                                                placeholder = { Text("e.g. 19.0760") },
+                                                label = { Text("Latitude", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                                placeholder = { Text("e.g. 19.0760", maxLines = 1) },
+                                                supportingText = { Text("-90 to +90", maxLines = 1) },
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                                 singleLine = true,
                                                 shape = RoundedCornerShape(10.dp),
@@ -643,8 +681,9 @@ fun CitySelectionDialog(
                                                     manualPreviewCity = null
                                                     manualCoordsError = null
                                                 },
-                                                label = { Text("Longitude (-180 to +180)") },
-                                                placeholder = { Text("e.g. 72.8777") },
+                                                label = { Text("Longitude", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                                placeholder = { Text("e.g. 72.8777", maxLines = 1) },
+                                                supportingText = { Text("-180 to +180", maxLines = 1) },
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                                 singleLine = true,
                                                 shape = RoundedCornerShape(10.dp),
@@ -860,8 +899,10 @@ private fun SelectedLocationSummaryCard(
         border = BorderStroke(1.dp, glassTokens.decorativeGold.copy(alpha = 0.4f))
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = "CURRENTLY SELECTED LOCATION",
@@ -870,15 +911,27 @@ private fun SelectedLocationSummaryCard(
                 color = glassTokens.decorativeGold
             )
             Text(
-                text = "${city.name}, ${city.state}, ${city.country}",
+                text = buildList {
+                    add(city.name)
+                    if (city.state.isNotBlank()) add(city.state)
+                    if (city.country.isNotBlank()) add(city.country)
+                }.joinToString(", "),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                softWrap = true
             )
             Text(
-                text = "${formatCoords(city.latitude, city.longitude)} • ${LocationCityResolver.formatTimeZoneSummary(city.timeZoneId)}",
+                text = formatCoords(city.latitude, city.longitude),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                softWrap = true
+            )
+            Text(
+                text = LocationCityResolver.formatTimeZoneSummary(city.timeZoneId),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                softWrap = true
             )
         }
     }
@@ -906,13 +959,23 @@ private fun DetectedLocationConfirmationCard(
     }
     val freshnessLabel = when {
         result.isStaleFix -> "Stale cached fix (${result.fixAgeSeconds?.div(60) ?: 10}+ min old) — tap Retry for a fresh fix"
-        result.fixAgeSeconds != null && result.fixAgeSeconds <= 60 -> "Fresh fix (< 1 min old)"
+        result.fixAgeSeconds != null && result.fixAgeSeconds <= 60 -> "Fresh GPS fix (< 1 min old)"
         result.fixAgeSeconds != null -> "Fix age: ${result.fixAgeSeconds / 60} min"
-        else -> "Live fix"
+        else -> "Live GPS fix"
     }
 
+    val displayLocationTitle = buildList {
+        add(city.name)
+        if (city.state.isNotBlank() && !city.state.equals(city.name, ignoreCase = true)) {
+            add(city.state)
+        }
+        if (city.country.isNotBlank()) {
+            add(city.country)
+        }
+    }.joinToString(", ")
+
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
         border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
         modifier = Modifier
@@ -920,77 +983,140 @@ private fun DetectedLocationConfirmationCard(
             .testTag("gps_confirmation_card")
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (result.isStaleFix) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                }
+            ) {
+                Text(
+                    text = if (result.isStaleFix) "CONFIRM DETECTED LOCATION · STALE FIX" else "CONFIRM DETECTED LOCATION",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (result.isStaleFix) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+
             Text(
-                text = "CONFIRM DETECTED LOCATION",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "${city.name}, ${city.state}, ${city.country}",
+                text = displayLocationTitle,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "Coordinates: ${formatCoords(city.latitude, city.longitude)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Time Zone: ${LocationCityResolver.formatTimeZoneSummary(city.timeZoneId)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Accuracy: $accuracyLabel",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = freshnessLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (result.isStaleFix) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                fontWeight = if (result.isStaleFix) FontWeight.Bold else FontWeight.Medium
+                color = MaterialTheme.colorScheme.onSurface,
+                softWrap = true
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Coordinates: ${formatCoords(city.latitude, city.longitude)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        softWrap = true
+                    )
+                    Text(
+                        text = "Time Zone: ${LocationCityResolver.formatTimeZoneSummary(city.timeZoneId)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        softWrap = true
+                    )
+                    Text(
+                        text = "Accuracy: $accuracyLabel",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        softWrap = true
+                    )
+                    Text(
+                        text = freshnessLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (result.isStaleFix) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        fontWeight = if (result.isStaleFix) FontWeight.Bold else FontWeight.Medium,
+                        softWrap = true
+                    )
+                }
+            }
 
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Primary full-width Confirm & Save button (never squeezed or wrapped awkwardly)
+            Button(
+                onClick = onConfirm,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
+                    .testTag("gps_confirm_save_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Confirm & Save Location",
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Secondary actions cleanly balanced in a full-width row underneath
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
-                    onClick = onConfirm,
-                    shape = RoundedCornerShape(10.dp),
+                OutlinedButton(
+                    onClick = onRetry,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .defaultMinSize(minHeight = 48.dp)
-                        .testTag("gps_confirm_save_button")
-                ) {
-                    Text("Confirm & Save", fontWeight = FontWeight.Bold)
-                }
-                OutlinedButton(
-                    onClick = onRetry,
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .defaultMinSize(minHeight = 48.dp)
                         .testTag("gps_retry_button")
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Retry GPS", modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Retry")
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Retry GPS",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Retry",
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                TextButton(
+                OutlinedButton(
                     onClick = onCancel,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
+                        .weight(1f)
                         .defaultMinSize(minHeight = 48.dp)
                         .testTag("gps_cancel_button")
                 ) {
-                    Text("Cancel")
+                    Text(
+                        text = "Cancel",
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1020,29 +1146,38 @@ private fun CityResultRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
                         text = city.name,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = if (isOnlineResult) {
                             MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
                         }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (isOnlineResult) {
@@ -1057,27 +1192,35 @@ private fun CityResultRow(
                             Text(
                                 text = if (isOnlineResult) "Online · ${city.country}" else city.country,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
                 Text(
-                    text = "${city.state} · ${city.timeZoneId}",
+                    text = buildList {
+                        if (city.state.isNotBlank()) add(city.state)
+                        if (city.timeZoneId.isNotBlank()) add(city.timeZoneId)
+                    }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = formatCoords(city.latitude, city.longitude),
                     style = MaterialTheme.typography.labelSmall,
                     color = glassTokens.decorativeGold,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
             if (isSelected) {
+                Spacer(modifier = Modifier.width(8.dp))
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = "Selected",

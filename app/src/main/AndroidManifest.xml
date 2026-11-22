@@ -21,6 +21,13 @@
         android:name="android.permission.ACCESS_ADSERVICES_AD_ID"
         tools:node="remove" />
 
+    <!-- Required on Android 11+ (API 30+) for TextToSpeech engine discovery and voice enumeration -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".UtsavSetuApplication"
         android:allowBackup="false"

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,7 +31,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -47,6 +50,7 @@ import com.example.domain.model.VidhiStep
 import com.example.panchang.FestivalDateEvaluator
 import com.example.platform.audio.MantraAudioEngine
 import com.example.platform.audio.MantraPlaybackState
+import com.example.platform.audio.NinadaPackStatus
 import com.example.platform.notifications.ReminderScheduler
 import com.example.ui.components.*
 import com.example.ui.theme.LocalLiquidGlassTokens
@@ -74,6 +78,7 @@ fun DetailScreen(
     val strings = LocalUtsavStrings.current
     val audioEngine = remember(context) { MantraAudioEngine.getInstance(context) }
     val mantraAudioState by audioEngine.playbackState.collectAsStateWithLifecycle()
+    val ninadaPackStatuses by audioEngine.ninadaPackStatuses.collectAsStateWithLifecycle()
 
     DisposableEffect(Unit) {
         onDispose {
@@ -83,6 +88,10 @@ fun DetailScreen(
 
     LaunchedEffect(state.panditVoiceGender) {
         audioEngine.setVoiceGender(state.panditVoiceGender)
+    }
+
+    LaunchedEffect(strings.language) {
+        audioEngine.setAppLanguage(strings.language)
     }
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Puja Vidhi, 1 = Samagri Checklist, 2 = Mantras
@@ -286,6 +295,32 @@ fun DetailScreen(
     }
 
     val isCuratedYear = FestivalDateEvaluator.isCuratedYear(resolvedDate.year)
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val heroImageHeight = 300.dp
+    val sheetOverlap = 24.dp
+    val revealSpacerHeight = heroImageHeight - sheetOverlap
+    val revealSpacerHeightPx = remember(density) { with(density) { revealSpacerHeight.toPx() } }
+
+    // 0f = at top (hero fully visible), 1f = scrolled past hero (hero completely hidden)
+    val heroCollapseProgress by remember(listState, revealSpacerHeightPx) {
+        derivedStateOf {
+            when {
+                listState.firstVisibleItemIndex > 0 -> 1f
+                revealSpacerHeightPx <= 0f -> 0f
+                else -> (listState.firstVisibleItemScrollOffset.toFloat() / revealSpacerHeightPx).coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    val curtainTopOffsetPx by remember(listState, revealSpacerHeightPx) {
+        derivedStateOf {
+            when {
+                listState.firstVisibleItemIndex > 0 -> 0f
+                else -> (revealSpacerHeightPx - listState.firstVisibleItemScrollOffset.toFloat()).coerceAtLeast(0f)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -293,36 +328,87 @@ fun DetailScreen(
             .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.TopCenter
     ) {
+        // Layer 1: Unobstructed Top Festival Hero Artwork (collapses smoothly on scroll, returns when back at top)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = 860.dp)
+                .fillMaxWidth()
+                .height(heroImageHeight)
+                .graphicsLayer {
+                    translationY = -heroCollapseProgress * (revealSpacerHeightPx * 0.45f)
+                    alpha = (1f - heroCollapseProgress * 1.12f).coerceIn(0f, 1f)
+                }
+                .testTag("detail_hero_artwork_container")
+        ) {
+            FestivalArtworkBanner(
+                festivalId = festival.id,
+                modifier = Modifier.fillMaxSize(),
+                isHeroBackground = true
+            )
+        }
+
+        // Layer 2: Solid rising sheet curtain aligned with the festival heading card so scrolled content cleanly hides the image
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = 860.dp)
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = curtainTopOffsetPx
+                }
+                .clip(
+                    RoundedCornerShape(
+                        topStart = if (heroCollapseProgress < 0.96f) 28.dp else 0.dp,
+                        topEnd = if (heroCollapseProgress < 0.96f) 28.dp else 0.dp
+                    )
+                )
+                .background(MaterialTheme.colorScheme.background)
+        )
+
+        // Layer 3: Scrollable Detail Content (transparent top spacer reveals hero artwork unobstructed)
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .widthIn(max = 860.dp)
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .testTag("detail_screen"),
             contentPadding = PaddingValues(bottom = 128.dp)
         ) {
-            // 1. Festival Hero Banner with Artwork and Bottom Title Card (no button overlap)
-            item {
-                Box(
+            // Transparent top spacer: keeps the hero image 100% visible when at top of screen
+            item(key = "detail_hero_reveal_spacer") {
+                Spacer(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(290.dp)
-                ) {
-                    FestivalArtworkBanner(
-                        festivalId = festival.id,
-                        modifier = Modifier.fillMaxSize(),
-                        isHeroBackground = true
-                    )
+                        .height(revealSpacerHeight)
+                        .testTag("detail_hero_spacer")
+                )
+            }
 
-                    // Bottom Hero Title Card (completely clear of top floating buttons)
+            // 1. Festival Heading Card (sits cleanly below the hero image at rest, glides over & hides the image as user scrolls)
+            item(key = "detail_festival_heading_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp)
+                        .testTag("detail_heading_card"),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Subtle visual pull-sheet indicator
+                    Box(
+                        modifier = Modifier
+                            .width(38.dp)
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(glassTokens.decorativeGold.copy(alpha = 0.55f))
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
                     LiquidGlassSurface(
                         cornerRadius = 24.dp,
                         strongFill = true,
                         elevation = 8.dp,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 20.dp, vertical = 14.dp)
-                            .fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(18.dp)) {
                             Row(
@@ -1490,7 +1576,8 @@ fun DetailScreen(
                                                 id = primaryMantra?.id ?: "primary_${festival.id}",
                                                 sanskritText = primaryMantra?.sanskrit ?: shastraDetails.sacredMantraSanskrit,
                                                 mantraTitle = primaryMantra?.title ?: "${shastraDetails.presidingDeity} Puja Mantra",
-                                                targetRounds = effectiveTarget
+                                                targetRounds = effectiveTarget,
+                                                transliteration = primaryMantra?.transliteration ?: shastraDetails.sacredMantraTransliteration
                                             )
                                         }
                                     },
@@ -1623,6 +1710,93 @@ fun DetailScreen(
                                     modifier = Modifier.testTag("japa_tabla_chip")
                                 )
                             }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Ninada Neural Recitation Engine Status & Quick Pack Action
+                            val sanskritPackStatus = ninadaPackStatuses["sa"] ?: NinadaPackStatus.NotDownloaded
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = glassTokens.solidElevatedContainer,
+                                border = BorderStroke(1.dp, glassTokens.decorativeGold.copy(alpha = 0.35f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("ninada_voice_status_card")
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = mantraAudioState.activeVoiceEngineLabel,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                softWrap = true
+                                            )
+                                            val statusSubtext = when (sanskritPackStatus) {
+                                                is NinadaPackStatus.Ready ->
+                                                    "Ninada Sanskrit 24 kHz neural model ready offline (${String.format(Locale.US, "%.1f", sanskritPackStatus.fileSizeMb)} MB)"
+                                                is NinadaPackStatus.Downloading ->
+                                                    sanskritPackStatus.statusMessage
+                                                is NinadaPackStatus.Error ->
+                                                    "Using Device Neural TTS · ${sanskritPackStatus.message}"
+                                                NinadaPackStatus.NotDownloaded ->
+                                                    "Using Device Neural TTS · Download Ninada Sanskrit (~22 MB) for studio chanting"
+                                            }
+                                            Text(
+                                                text = mantraAudioState.audioStatusMessage ?: statusSubtext,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                softWrap = true
+                                            )
+                                        }
+                                        if (sanskritPackStatus is NinadaPackStatus.NotDownloaded ||
+                                            sanskritPackStatus is NinadaPackStatus.Error
+                                        ) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            OutlinedButton(
+                                                onClick = { audioEngine.downloadNinadaPack("sa") },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier
+                                                    .defaultMinSize(minHeight = 40.dp)
+                                                    .testTag("download_ninada_sanskrit_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Download,
+                                                    contentDescription = "Download Ninada Sanskrit voice",
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Ninada",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (sanskritPackStatus is NinadaPackStatus.Downloading) {
+                                        LinearProgressIndicator(
+                                            progress = { sanskritPackStatus.progress.coerceIn(0f, 1f) },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(5.dp)
+                                                .clip(RoundedCornerShape(3.dp))
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1737,9 +1911,11 @@ fun DetailScreen(
                                     Spacer(modifier = Modifier.height(10.dp))
                                     val isThisMantraPlaying = mantraAudioState.isPlaying && mantraAudioState.currentMantraId == mantra.id
                                     val isThisMantraActive = mantraAudioState.currentMantraId == mantra.id
+                                    val meaningAudioId = "${mantra.id}_meaning_${strings.language.code}"
+                                    val isMeaningPlaying = mantraAudioState.isPlaying && mantraAudioState.currentMantraId == meaningAudioId
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         FilledTonalButton(
@@ -1753,7 +1929,8 @@ fun DetailScreen(
                                                         id = mantra.id,
                                                         sanskritText = mantra.sanskrit,
                                                         mantraTitle = mantra.title,
-                                                        targetRounds = selectedMantraTarget
+                                                        targetRounds = selectedMantraTarget,
+                                                        transliteration = mantra.transliteration
                                                     )
                                                 }
                                             },
@@ -1761,7 +1938,10 @@ fun DetailScreen(
                                             colors = ButtonDefaults.filledTonalButtonColors(
                                                 containerColor = if (isThisMantraPlaying) MaterialTheme.colorScheme.primaryContainer else glassTokens.solidElevatedContainer
                                             ),
-                                            modifier = Modifier.testTag("play_mantra_button_${mantra.stepNumber}")
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .defaultMinSize(minHeight = 44.dp)
+                                                .testTag("play_mantra_button_${mantra.stepNumber}")
                                         ) {
                                             Icon(
                                                 imageVector = if (isThisMantraPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -1772,8 +1952,46 @@ fun DetailScreen(
                                             Text(
                                                 text = if (isThisMantraPlaying) strings.pauseMantraLabel else strings.playMantraLabel,
                                                 style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
+                                        }
+
+                                        if (mantra.meaning.isNotBlank()) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (isMeaningPlaying) {
+                                                        audioEngine.stop()
+                                                    } else {
+                                                        audioEngine.playLocalizedNarration(
+                                                            id = meaningAudioId,
+                                                            title = "${mantra.title} (${strings.language.nativeName})",
+                                                            text = mantra.meaning,
+                                                            language = strings.language
+                                                        )
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(12.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier
+                                                    .defaultMinSize(minHeight = 44.dp)
+                                                    .testTag("listen_meaning_button_${mantra.stepNumber}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isMeaningPlaying) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
+                                                    contentDescription = "Listen meaning in ${strings.language.englishName}",
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (isMeaningPlaying) "Stop" else strings.language.nativeName,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                         }
 
                                         if (isThisMantraActive) {
@@ -1813,17 +2031,20 @@ fun DetailScreen(
             )
         }
 
-        // Top status bar gradient scrim for floating header readability
+        // Top status bar scrim (when hero visible) transitioning to a pinned solid top bar when hero is fully hidden
+        val collapsedHeaderAlpha = ((heroCollapseProgress - 0.68f) / 0.32f).coerceIn(0f, 1f)
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(96.dp)
                 .align(Alignment.TopCenter)
+                .graphicsLayer { alpha = (1f - collapsedHeaderAlpha).coerceIn(0f, 1f) }
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xCC000000),
-                            Color(0x55000000),
+                            Color(0xAA000000),
+                            Color(0x40000000),
                             Color.Transparent
                         )
                     )
@@ -1835,85 +2056,107 @@ fun DetailScreen(
         val saveSoftPress = rememberSoftPressController()
         val shareSoftPress = rememberSoftPressController()
 
-        // Floating Top Navigation Bar (Always on top of everything)
-        Row(
+        // Floating Top Navigation Bar (Always on top; shows condensed festival title once hero hides)
+        Surface(
+            color = MaterialTheme.colorScheme.surface.copy(alpha = collapsedHeaderAlpha * 0.96f),
+            shadowElevation = if (collapsedHeaderAlpha > 0.5f) 4.dp else 0.dp,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .widthIn(max = 860.dp)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-                .zIndex(10f),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .zIndex(10f)
         ) {
-            Surface(
-                onClick = { backButtonSoftPress.triggerSoftClick(onBack) },
-                interactionSource = backButtonSoftPress.interactionSource,
-                shape = CircleShape,
-                color = Color(0xF2160C10), // Solid deep obsidian sanctum container
-                border = BorderStroke(1.8.dp, Color(0xFFE5B84B)), // Bright sacred gold rim
-                shadowElevation = 8.dp,
-                tonalElevation = 6.dp,
+            Row(
                 modifier = Modifier
-                    .size(48.dp)
-                    .softPressCardEffect(backButtonSoftPress)
-                    .testTag("detail_back_button")
+                    .fillMaxWidth()
+                    .widthIn(max = 860.dp)
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = strings.backButton,
-                        tint = Color(0xFFFFD54F),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Surface(
-                    onClick = { saveSoftPress.triggerSoftClick { viewModel.toggleSavedFestival() } },
-                    interactionSource = saveSoftPress.interactionSource,
+                    onClick = { backButtonSoftPress.triggerSoftClick(onBack) },
+                    interactionSource = backButtonSoftPress.interactionSource,
                     shape = CircleShape,
-                    color = Color(0xF2160C10),
-                    border = BorderStroke(1.5.dp, Color(0xFFE5B84B).copy(alpha = 0.85f)),
+                    color = Color(0xF2160C10), // Solid deep obsidian sanctum container
+                    border = BorderStroke(1.8.dp, Color(0xFFE5B84B)), // Bright sacred gold rim
                     shadowElevation = 8.dp,
                     tonalElevation = 6.dp,
                     modifier = Modifier
                         .size(48.dp)
-                        .softPressCardEffect(saveSoftPress)
-                        .testTag("detail_save_button")
+                        .softPressCardEffect(backButtonSoftPress)
+                        .testTag("detail_back_button")
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = if (state.isSaved) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (state.isSaved) "Saved festival" else "Save festival",
-                            tint = if (state.isSaved) Color(0xFFFF5252) else Color(0xFFFFD54F),
-                            modifier = Modifier.size(22.dp)
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = strings.backButton,
+                            tint = Color(0xFFFFD54F),
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
 
-                Surface(
-                    onClick = { shareSoftPress.triggerSoftClick { showShareDialog = true } },
-                    interactionSource = shareSoftPress.interactionSource,
-                    shape = CircleShape,
-                    color = Color(0xF2160C10),
-                    border = BorderStroke(1.5.dp, Color(0xFFE5B84B).copy(alpha = 0.85f)),
-                    shadowElevation = 8.dp,
-                    tonalElevation = 6.dp,
+                // Condensed festival title fades in cleanly when the hero artwork has scrolled out of view
+                Text(
+                    text = localizedFestivalTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .size(48.dp)
-                        .softPressCardEffect(shareSoftPress)
-                        .testTag("detail_share_button")
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = strings.shareGreeting,
-                            tint = Color(0xFFFFD54F),
-                            modifier = Modifier.size(22.dp)
-                        )
+                        .weight(1f)
+                        .padding(horizontal = 12.dp)
+                        .graphicsLayer { alpha = collapsedHeaderAlpha }
+                        .testTag("detail_collapsed_title")
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        onClick = { saveSoftPress.triggerSoftClick { viewModel.toggleSavedFestival() } },
+                        interactionSource = saveSoftPress.interactionSource,
+                        shape = CircleShape,
+                        color = Color(0xF2160C10),
+                        border = BorderStroke(1.5.dp, Color(0xFFE5B84B).copy(alpha = 0.85f)),
+                        shadowElevation = 8.dp,
+                        tonalElevation = 6.dp,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .softPressCardEffect(saveSoftPress)
+                            .testTag("detail_save_button")
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (state.isSaved) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = if (state.isSaved) "Saved festival" else "Save festival",
+                                tint = if (state.isSaved) Color(0xFFFF5252) else Color(0xFFFFD54F),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = { shareSoftPress.triggerSoftClick { showShareDialog = true } },
+                        interactionSource = shareSoftPress.interactionSource,
+                        shape = CircleShape,
+                        color = Color(0xF2160C10),
+                        border = BorderStroke(1.5.dp, Color(0xFFE5B84B).copy(alpha = 0.85f)),
+                        shadowElevation = 8.dp,
+                        tonalElevation = 6.dp,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .softPressCardEffect(shareSoftPress)
+                            .testTag("detail_share_button")
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = strings.shareGreeting,
+                                tint = Color(0xFFFFD54F),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -2519,7 +2762,8 @@ private fun GuidedPujaModeScreen(
                                                             id = targetMantraId,
                                                             sanskritText = targetSanskrit,
                                                             mantraTitle = targetTitle,
-                                                            targetRounds = 1
+                                                            targetRounds = 1,
+                                                            transliteration = activeStepMantra?.transliteration ?: shastraDetails.sacredMantraTransliteration
                                                         )
                                                     }
                                                 },

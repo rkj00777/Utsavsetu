@@ -31,6 +31,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.preferences.AppLanguage
 import com.example.panchang.City
 import com.example.panchang.RegionalTradition
+import com.example.platform.audio.MantraAudioEngine
+import com.example.platform.audio.NinadaLanguagePack
+import com.example.platform.audio.NinadaNeuralVoiceEngine
+import com.example.platform.audio.NinadaPackStatus
 import com.example.platform.auth.AuthHelper
 import com.example.platform.location.LocationCityResolver
 import com.example.platform.notifications.DailyMorningNotificationEngine
@@ -72,7 +76,18 @@ fun ProfileScreen(
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
     var showAboutPanchangDialog by remember { mutableStateOf(false) }
     var showSystemHealthDialog by remember { mutableStateOf(false) }
+    var showAllNinadaPacks by remember { mutableStateOf(false) }
+    val audioEngine = remember(context) { MantraAudioEngine.getInstance(context) }
+    val ninadaPackStatuses by audioEngine.ninadaPackStatuses.collectAsStateWithLifecycle()
+    val mantraAudioState by audioEngine.playbackState.collectAsStateWithLifecycle()
     val strings = com.example.ui.theme.LocalUtsavStrings.current
+
+    LaunchedEffect(prefs.panditVoiceGender) {
+        audioEngine.setVoiceGender(prefs.panditVoiceGender)
+    }
+    LaunchedEffect(prefs.preferredLanguage) {
+        audioEngine.setAppLanguage(prefs.preferredLanguage)
+    }
 
     if (showReminderCentre) {
         ReminderCentreDialog(
@@ -437,42 +452,68 @@ fun ProfileScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                                verticalAlignment = Alignment.Top,
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.LocationOn,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 2.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Column {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
                                     Text(
                                         text = UtsavLocalizationEngine.localizeCityName(prefs.hostCity.name, strings.language),
                                         style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        softWrap = true
                                     )
                                     Text(
-                                        text = "${UtsavLocalizationEngine.localizeStateName(prefs.hostCity.state, strings.language)}, ${prefs.hostCity.country}",
+                                        text = buildList {
+                                            if (prefs.hostCity.state.isNotBlank()) {
+                                                add(UtsavLocalizationEngine.localizeStateName(prefs.hostCity.state, strings.language))
+                                            }
+                                            if (prefs.hostCity.country.isNotBlank()) {
+                                                add(prefs.hostCity.country)
+                                            }
+                                        }.joinToString(", "),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        softWrap = true
                                     )
                                     Text(
-                                        text = "$coordSummary · $tzSummary",
+                                        text = coordSummary,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        softWrap = true
+                                    )
+                                    Text(
+                                        text = tzSummary,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        softWrap = true
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "${strings.changeButton} →",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = "${strings.changeButton} →",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
 
@@ -659,6 +700,106 @@ fun ProfileScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Ninada 24 kHz Neural Voice Packages (Classical Sanskrit + all 8 regional languages)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("profile_ninada_voice_packs_section"),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Ninada Neural Voice Packages (24 kHz)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Natural on-device neural voices powered by Ninada (Sanskrit & Indian languages). Device Neural TTS is used automatically when a pack is not downloaded.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        softWrap = true
+                    )
+
+                    val primaryPacks = remember(prefs.preferredLanguage) {
+                        val saPack = NinadaNeuralVoiceEngine.SUPPORTED_PACKS.first { it.code == "sa" }
+                        val activeLangPack = NinadaNeuralVoiceEngine.SUPPORTED_PACKS.firstOrNull {
+                            it.appLanguage == prefs.preferredLanguage
+                        }
+                        listOfNotNull(saPack, activeLangPack).distinctBy { it.code }
+                    }
+                    val otherPacks = remember(primaryPacks) {
+                        val primaryCodes = primaryPacks.map { it.code }.toSet()
+                        NinadaNeuralVoiceEngine.SUPPORTED_PACKS.filterNot { it.code in primaryCodes }
+                    }
+
+                    primaryPacks.forEach { pack ->
+                        NinadaPackRow(
+                            pack = pack,
+                            status = ninadaPackStatuses[pack.code] ?: NinadaPackStatus.NotDownloaded,
+                            isPlayingPreview = mantraAudioState.isPlaying && mantraAudioState.currentMantraId == "preview_${pack.code}",
+                            onDownload = { audioEngine.downloadNinadaPack(pack.code) },
+                            onDelete = { audioEngine.deleteNinadaPack(pack.code) },
+                            onPreview = {
+                                if (mantraAudioState.isPlaying && mantraAudioState.currentMantraId == "preview_${pack.code}") {
+                                    audioEngine.stop()
+                                } else {
+                                    audioEngine.previewLanguageVoice(pack.code)
+                                }
+                            }
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { showAllNinadaPacks = !showAllNinadaPacks },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 44.dp)
+                            .testTag("toggle_all_ninada_packs_button")
+                    ) {
+                        Text(
+                            text = if (showAllNinadaPacks) {
+                                "Hide Other Regional Languages"
+                            } else {
+                                "More Regional Languages (${otherPacks.size} available)"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = if (showAllNinadaPacks) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    if (showAllNinadaPacks) {
+                        otherPacks.forEach { pack ->
+                            NinadaPackRow(
+                                pack = pack,
+                                status = ninadaPackStatuses[pack.code] ?: NinadaPackStatus.NotDownloaded,
+                                isPlayingPreview = mantraAudioState.isPlaying && mantraAudioState.currentMantraId == "preview_${pack.code}",
+                                onDownload = { audioEngine.downloadNinadaPack(pack.code) },
+                                onDelete = { audioEngine.deleteNinadaPack(pack.code) },
+                                onPreview = {
+                                    if (mantraAudioState.isPlaying && mantraAudioState.currentMantraId == "preview_${pack.code}") {
+                                        audioEngine.stop()
+                                    } else {
+                                        audioEngine.previewLanguageVoice(pack.code)
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -939,3 +1080,186 @@ private fun ProfileSwitchRow(
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
+
+@Composable
+private fun NinadaPackRow(
+    pack: NinadaLanguagePack,
+    status: NinadaPackStatus,
+    isPlayingPreview: Boolean,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit,
+    onPreview: () -> Unit
+) {
+    val glassTokens = LocalLiquidGlassTokens.current
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = glassTokens.solidElevatedContainer,
+        border = BorderStroke(
+            1.dp,
+            if (status is NinadaPackStatus.Ready) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ninada_pack_row_${pack.code}")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${pack.nativeLabel} · ${pack.displayName}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        softWrap = true
+                    )
+                    val subtitle = when (status) {
+                        is NinadaPackStatus.Ready ->
+                            "Ninada 24 kHz ready offline (${String.format(Locale.US, "%.1f", status.fileSizeMb)} MB)"
+                        is NinadaPackStatus.Downloading ->
+                            status.statusMessage
+                        is NinadaPackStatus.Error ->
+                            "Fallback: Device Neural TTS · ${status.message}"
+                        NinadaPackStatus.NotDownloaded ->
+                            "~${pack.approxSizeMb} MB · Fallback: Device Neural TTS"
+                    }
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (status is NinadaPackStatus.Ready) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        softWrap = true
+                    )
+                }
+            }
+
+            if (status is NinadaPackStatus.Downloading) {
+                LinearProgressIndicator(
+                    progress = { status.progress.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = onPreview,
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .defaultMinSize(minHeight = 44.dp)
+                        .testTag("ninada_preview_${pack.code}")
+                ) {
+                    Icon(
+                        imageVector = if (isPlayingPreview) Icons.Default.Stop else Icons.Default.VolumeUp,
+                        contentDescription = "Test ${pack.displayName} voice",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isPlayingPreview) "Stop" else "Test Voice",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                when (status) {
+                    is NinadaPackStatus.Ready -> {
+                        OutlinedButton(
+                            onClick = onDelete,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 44.dp)
+                                .testTag("ninada_delete_${pack.code}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Remove ${pack.displayName} pack",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Remove",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    is NinadaPackStatus.Downloading -> {
+                        OutlinedButton(
+                            onClick = {},
+                            enabled = false,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Downloading…",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    is NinadaPackStatus.NotDownloaded, is NinadaPackStatus.Error -> {
+                        Button(
+                            onClick = onDownload,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 44.dp)
+                                .testTag("ninada_download_${pack.code}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Download ${pack.displayName} pack",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Download",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

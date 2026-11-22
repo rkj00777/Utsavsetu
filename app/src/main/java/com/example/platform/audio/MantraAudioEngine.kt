@@ -2,7 +2,9 @@ package com.example.platform.audio
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +14,7 @@ import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import com.example.data.preferences.AppLanguage
 import com.example.domain.FestivalPujaMantra
 import com.example.platform.monitoring.AppBatteryMonitor
 import com.example.platform.monitoring.AppCrashMonitor
@@ -19,8 +22,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.io.File
-import java.io.RandomAccessFile
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -29,10 +30,12 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Playback state representing active mantra audio recitation and Japa Mala progress.
+ * Playback state representing active mantra audio recitation, active neural voice engine,
+ * and Japa Mala progress.
  */
 data class MantraPlaybackState(
     val isPlaying: Boolean = false,
+    val isSynthesizing: Boolean = false,
     val currentMantraId: String? = null,
     val currentMantraTitle: String = "",
     val currentMantraSanskrit: String = "",
@@ -42,36 +45,53 @@ data class MantraPlaybackState(
     val speed: Float = 0.85f,
     val isTanpuraEnabled: Boolean = true,
     val isTablaEnabled: Boolean = true,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val activeLanguageCode: String = "sa",
+    val activeVoiceEngineLabel: String = "Indian Neural Voice · Sanskrit",
+    val audioStatusMessage: String? = null
 ) {
     val mantraTitle: String get() = currentMantraTitle
 }
 
 /**
- * Production-grade on-device Mantra Audio Recitation & Temple Vadyam (Tanpura + Tabla) Engine.
- * Combines:
- * 1. Strict Indian Pandit voice synthesis (sa-IN / hi-IN / mr-IN / en-IN — never US/UK English)
- *    with Devanagari compound normalization and Vedic prosody.
- * 2. Real-time Vedic Pandit Vocal Tract & Temple Sanctum DSP (WSOLA time-preserving pitch/formant
- *    resynthesis for deep Male Pandit baritone vs melodious Female Pandit Vidushi + warm temple reverb).
- * 3. Multi-harmonic Plucked Tanpura (4-string Pa-Sa-Sa-Sa with Jivari overtones up to 2.2 kHz)
- *    and Indian Tabla (Dayan tuned to C#4 277.18 Hz + Bayan bass Dagga in 8-beat Bhajan Keherwa Theka).
- * 4. Continuous Japa counter loops (1x, 11x, 21x, 108x) with haptic feedback at each bead completion.
+ * Production-grade on-device Mantra Audio Recitation & Multi-Language Natural Neural Voice Engine.
+ *
+ * 3-Tier Audible Pipeline (never silent):
+ * 1. **Ninada Neural 24 kHz ONNX** (`hemanth/ninada` / `gnumanth/ninada`) for Classical Sanskrit (`sa`)
+ *    and all 8 regional app languages (`hi`, `mr`, `gu`, `ta`, `te`, `kn`, `bn`, `en`), streamed via
+ *    high-priority `AudioTrack` (`USAGE_MEDIA`, `CONTENT_TYPE_SPEECH`) with AudioFocus.
+ * 2. **Device High-Quality Neural TTS** (`com.google.android.tts` with automatic system TTS engine
+ *    fallback), ranking `neural2`/`wavenet`/`VERY_HIGH` voices per language & Pandit gender, with
+ *    automatic phonetic transliteration fallback whenever Devanagari TTS is missing on the device.
+ * 3. **Temple Vadyam Accompaniment**: Soft 4-string Plucked Tanpura (C#4) & Indian Tabla (Keherwa Theka)
+ *    mixed cleanly underneath the voice so chanting remains foregrounded and crystal-clear.
  */
 class MantraAudioEngine private constructor(private val appContext: Context) : TextToSpeech.OnInitListener {
 
     private val engineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    val ninadaEngine: NinadaNeuralVoiceEngine = NinadaNeuralVoiceEngine.getInstance(appContext)
+    val ninadaPackStatuses: StateFlow<Map<String, NinadaPackStatus>> = ninadaEngine.packStatuses
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+    private var triedDefaultTtsFallback = false
     private var isDevanagariVoiceActive = true
     private var isSelectedVoiceNativeMale = false
     private var isSelectedVoiceNativeFemale = false
+    private var lastConfiguredVoiceLabel: String = "Indian Neural Voice"
 
     private val _playbackState = MutableStateFlow(MantraPlaybackState())
     val playbackState: StateFlow<MantraPlaybackState> = _playbackState.asStateFlow()
 
     private var activeMantra: FestivalPujaMantra? = null
+    private var activePlaybackLangCode: String = "sa"
+    private var activeAppLanguage: AppLanguage = AppLanguage.ENGLISH
+    private var activeVoiceGender: String = "MALE" // "MALE" (Male Pandit) or "FEMALE" (Female Pandit / विदुषी)
+
+    private val audioManager: AudioManager? by lazy {
+        appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
+    private var audioFocusRequest: AudioFocusRequest? = null
 
     // Temple Vadyam (Tanpura + Tabla) AudioTrack generator
     private var instrumentTrack: AudioTrack? = null
@@ -80,9 +100,11 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     private var instrumentJob: Job? = null
     private var previewAutoStopJob: Job? = null
 
-    // Processed Pandit Voice AudioTrack
+    // Ninada 24 kHz Neural Voice AudioTrack
     private var voiceTrack: AudioTrack? = null
     private var voicePlaybackJob: Job? = null
+    @Volatile
+    private var activePlaybackGeneration: Long = 0L
 
     // Vibrator for Japa Bead haptic click
     private val vibrator: Vibrator? by lazy {
@@ -95,18 +117,38 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         }
     }
 
-    private var activeVoiceGender: String = "MALE" // "MALE" (Male Pandit) or "FEMALE" (Female Pandit / विदुषी)
-
     init {
+        initializeTtsEngine(preferGoogleEngine = true)
+    }
+
+    private fun initializeTtsEngine(preferGoogleEngine: Boolean) {
         try {
-            // Prefer Google TTS engine for authentic Indian Devanagari synthesis
-            tts = TextToSpeech(appContext, this, "com.google.android.tts")
+            tts?.shutdown()
+        } catch (_: Throwable) {}
+        tts = null
+        isTtsReady = false
+        try {
+            tts = if (preferGoogleEngine) {
+                TextToSpeech(appContext, this, "com.google.android.tts")
+            } else {
+                triedDefaultTtsFallback = true
+                TextToSpeech(appContext, this)
+            }
         } catch (_: Throwable) {
-            try {
-                tts = TextToSpeech(appContext, this)
-            } catch (_: Throwable) {}
+            if (preferGoogleEngine && !triedDefaultTtsFallback) {
+                triedDefaultTtsFallback = true
+                try {
+                    tts = TextToSpeech(appContext, this)
+                } catch (_: Throwable) {}
+            }
         }
     }
+
+    fun setAppLanguage(language: AppLanguage) {
+        activeAppLanguage = language
+    }
+
+    fun getAppLanguage(): AppLanguage = activeAppLanguage
 
     /**
      * Set the reciting Pandit voice gender (MALE or FEMALE) and reconfigure TTS voice & pitch.
@@ -116,14 +158,82 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         activeVoiceGender = normalized
         val ttsInstance = tts
         if (ttsInstance != null && isTtsReady) {
-            applyVoiceAndPitchConfig(ttsInstance)
+            applyVoiceAndPitchConfig(ttsInstance, activePlaybackLangCode)
         }
     }
 
     fun getVoiceGender(): String = activeVoiceGender
 
-    private fun selectIndianLocale(ttsInstance: TextToSpeech): Locale {
-        val candidateTags = listOf("sa-IN", "hi-IN", "mr-IN", "ne-NP", "gu-IN", "bn-IN", "kn-IN", "te-IN", "ta-IN", "en-IN")
+    fun downloadNinadaPack(languageCode: String) {
+        engineScope.launch {
+            ninadaEngine.downloadLanguagePack(languageCode, activeVoiceGender)
+        }
+    }
+
+    fun deleteNinadaPack(languageCode: String) {
+        engineScope.launch {
+            ninadaEngine.deleteLanguagePack(languageCode)
+        }
+    }
+
+    private fun buildSpeechAudioAttributes(): AudioAttributes {
+        return AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+    }
+
+    private fun requestSpeechAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(buildSpeechAudioAttributes())
+                    .setAcceptsDelayedFocusGain(false)
+                    .build()
+                audioFocusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                )
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun abandonSpeechAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+                audioFocusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(null)
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun candidateLocalesForLanguage(langCode: String): List<String> {
+        return when (langCode.lowercase(Locale.ROOT)) {
+            "sa" -> listOf("sa-IN", "hi-IN", "mr-IN", "ne-NP", "en-IN")
+            "hi" -> listOf("hi-IN", "mr-IN", "sa-IN", "en-IN")
+            "mr" -> listOf("mr-IN", "hi-IN", "sa-IN", "en-IN")
+            "gu" -> listOf("gu-IN", "hi-IN", "en-IN")
+            "ta" -> listOf("ta-IN", "en-IN", "hi-IN")
+            "te" -> listOf("te-IN", "en-IN", "hi-IN")
+            "kn" -> listOf("kn-IN", "en-IN", "hi-IN")
+            "bn" -> listOf("bn-IN", "bn-BD", "hi-IN", "en-IN")
+            "en" -> listOf("en-IN", "en-GB", "en-US")
+            else -> listOf("sa-IN", "hi-IN", "mr-IN", "en-IN")
+        }
+    }
+
+    private fun selectLocaleForLanguage(ttsInstance: TextToSpeech, targetLangCode: String): Locale {
+        val candidateTags = candidateLocalesForLanguage(targetLangCode)
         for (tag in candidateTags) {
             val loc = Locale.forLanguageTag(tag)
             try {
@@ -135,12 +245,15 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 }
             } catch (_: Throwable) {}
         }
-        val fallbackHi = Locale.forLanguageTag("hi-IN")
+        val fallback = Locale.forLanguageTag(candidateTags.first())
         try {
-            ttsInstance.language = fallbackHi
-            isDevanagariVoiceActive = true
-        } catch (_: Throwable) {}
-        return fallbackHi
+            val res = ttsInstance.setLanguage(fallback)
+            isDevanagariVoiceActive = res >= TextToSpeech.LANG_AVAILABLE &&
+                fallback.language in setOf("sa", "hi", "mr", "ne")
+        } catch (_: Throwable) {
+            isDevanagariVoiceActive = false
+        }
+        return fallback
     }
 
     private fun isMaleVoiceName(nameLower: String): Boolean {
@@ -152,6 +265,10 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             nameLower.contains("-hid-") || nameLower.endsWith("-hid") ||
             nameLower.contains("-hib-") || nameLower.endsWith("-hib") ||
             nameLower.contains("-end-") || nameLower.contains("-ene-") ||
+            nameLower.contains("-mrb-") || nameLower.contains("-gub-") ||
+            nameLower.contains("-tab-") || nameLower.contains("-tad-") ||
+            nameLower.contains("-teb-") || nameLower.contains("-knb-") ||
+            nameLower.contains("-bnb-") || nameLower.contains("-bnd-") ||
             nameLower.contains("wavenet-b") || nameLower.contains("wavenet-c") ||
             nameLower.contains("neural2-b") || nameLower.contains("neural2-c") ||
             nameLower.contains("standard-b") || nameLower.contains("standard-c")
@@ -167,117 +284,137 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             nameLower.contains("-hic-") || nameLower.endsWith("-hic") ||
             nameLower.contains("cfn-local") || nameLower.contains("cfn-network") ||
             nameLower.contains("-ena-") || nameLower.contains("-enc-") ||
+            nameLower.contains("-mra-") || nameLower.contains("-gua-") ||
+            nameLower.contains("-taa-") || nameLower.contains("-tac-") ||
+            nameLower.contains("-tea-") || nameLower.contains("-kna-") ||
+            nameLower.contains("-bna-") || nameLower.contains("-bnc-") ||
             nameLower.contains("wavenet-a") || nameLower.contains("wavenet-d") ||
             nameLower.contains("neural2-a") || nameLower.contains("neural2-d") ||
             nameLower.contains("standard-a") || nameLower.contains("standard-d")
     }
 
-    private fun applyVoiceAndPitchConfig(ttsInstance: TextToSpeech) {
+    private fun voiceQualityScore(voice: Voice): Int {
+        val nameLower = voice.name.lowercase(Locale.ROOT)
+        var score = 0
+        if (nameLower.contains("neural")) score += 40
+        if (nameLower.contains("wavenet")) score += 35
+        if (nameLower.contains("studio") || nameLower.contains("journey")) score += 45
+        when {
+            voice.quality >= Voice.QUALITY_VERY_HIGH -> score += 30
+            voice.quality >= Voice.QUALITY_HIGH -> score += 20
+            voice.quality >= Voice.QUALITY_NORMAL -> score += 10
+        }
+        // Prefer local voices slightly for zero-latency reliability, unless a very-high quality neural voice exists
+        if (!voice.isNetworkConnectionRequired) score += 8
+        return score
+    }
+
+    private fun applyVoiceAndPitchConfig(ttsInstance: TextToSpeech, targetLangCode: String = "sa") {
         val isFemale = activeVoiceGender.equals("FEMALE", ignoreCase = true)
         isSelectedVoiceNativeMale = false
         isSelectedVoiceNativeFemale = false
 
-        // Step 1: Always anchor the TTS instance to an authentic Indian locale first
-        val baseIndianLocale = selectIndianLocale(ttsInstance)
+        try {
+            ttsInstance.setAudioAttributes(buildSpeechAudioAttributes())
+        } catch (_: Throwable) {}
 
-        // Step 2: Inspect available voices, strictly restricted to Indian locales ONLY (never US/GB/AU)
+        val baseLocale = selectLocaleForLanguage(ttsInstance, targetLangCode)
+        val priorityTags = candidateLocalesForLanguage(targetLangCode)
+        val devanagariLanguages = setOf("sa", "hi", "mr", "ne")
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             try {
                 val allVoices = ttsInstance.voices
                 if (!allVoices.isNullOrEmpty()) {
-                    val indianLanguages = setOf("sa", "hi", "mr", "ne", "gu", "bn", "pa", "kn", "te", "ta", "ml", "or")
-                    val devanagariLanguages = setOf("sa", "hi", "mr", "ne")
+                    val installedVoices = allVoices.filter { voice ->
+                        voice.features == null ||
+                            !voice.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+                    }.ifEmpty { allVoices.toList() }
 
-                    // Filter strictly to Indian voices — completely forbid en-US, en-GB, etc.
-                    val indianVoices = allVoices.filter { voice ->
+                    val matchedVoices = installedVoices.filter { voice ->
                         val lang = voice.locale.language.lowercase(Locale.ROOT)
                         val country = voice.locale.country.uppercase(Locale.ROOT)
-                        val notMissing = voice.features == null ||
-                            !voice.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
-                        notMissing && (lang in indianLanguages || (lang == "en" && country == "IN"))
-                    }.ifEmpty {
-                        allVoices.filter { voice ->
-                            val lang = voice.locale.language.lowercase(Locale.ROOT)
-                            val country = voice.locale.country.uppercase(Locale.ROOT)
-                            lang in indianLanguages || (lang == "en" && country == "IN")
+                        priorityTags.any { tag ->
+                            val tagLang = tag.substringBefore("-").lowercase(Locale.ROOT)
+                            val tagCountry = tag.substringAfter("-", "").uppercase(Locale.ROOT)
+                            lang == tagLang && (tagCountry.isEmpty() || country == tagCountry || tagLang != "en")
                         }
                     }
 
-                    // Sort so Sanskrit/Hindi/Marathi Devanagari local voices come first
-                    val sortedIndianVoices = indianVoices.sortedWith(
+                    val rankedVoices = matchedVoices.sortedWith(
                         compareBy<Voice> { voice ->
-                            when (voice.locale.language.lowercase(Locale.ROOT)) {
-                                "sa" -> 0
-                                "hi" -> 1
-                                "mr" -> 2
-                                in indianLanguages -> 3
-                                else -> 4 // en-IN
+                            val lang = voice.locale.language.lowercase(Locale.ROOT)
+                            val country = voice.locale.country.uppercase(Locale.ROOT)
+                            val exactIdx = priorityTags.indexOfFirst { tag ->
+                                val tagLang = tag.substringBefore("-").lowercase(Locale.ROOT)
+                                val tagCountry = tag.substringAfter("-", "").uppercase(Locale.ROOT)
+                                lang == tagLang && (tagCountry.isEmpty() || country == tagCountry)
                             }
-                        }.thenBy { it.isNetworkConnectionRequired }
+                            if (exactIdx >= 0) exactIdx else priorityTags.indexOfFirst {
+                                it.substringBefore("-").lowercase(Locale.ROOT) == lang
+                            }.let { if (it >= 0) it + 10 else 99 }
+                        }.thenByDescending { voice ->
+                            val n = voice.name.lowercase(Locale.ROOT)
+                            val genderMatch = if (isFemale) {
+                                isFemaleVoiceName(n) && !isMaleVoiceName(n)
+                            } else {
+                                isMaleVoiceName(n) && !isFemaleVoiceName(n)
+                            }
+                            if (genderMatch) 100 else 0
+                        }.thenByDescending { voice ->
+                            voiceQualityScore(voice)
+                        }
                     )
 
-                    val devanagariVoices = sortedIndianVoices.filter {
-                        it.locale.language.lowercase(Locale.ROOT) in devanagariLanguages
-                    }
-
-                    val targetVoice: Voice? = if (isFemale) {
-                        devanagariVoices.firstOrNull { v ->
-                            val n = v.name.lowercase(Locale.ROOT)
-                            isFemaleVoiceName(n) && !isMaleVoiceName(n)
-                        } ?: sortedIndianVoices.firstOrNull { v ->
-                            val n = v.name.lowercase(Locale.ROOT)
-                            isFemaleVoiceName(n) && !isMaleVoiceName(n)
-                        } ?: devanagariVoices.firstOrNull { v ->
-                            val n = v.name.lowercase(Locale.ROOT)
-                            !isMaleVoiceName(n)
-                        } ?: devanagariVoices.firstOrNull() ?: sortedIndianVoices.firstOrNull()
-                    } else {
-                        devanagariVoices.firstOrNull { v ->
-                            val n = v.name.lowercase(Locale.ROOT)
-                            isMaleVoiceName(n) && !isFemaleVoiceName(n)
-                        } ?: sortedIndianVoices.firstOrNull { v ->
-                            val n = v.name.lowercase(Locale.ROOT)
-                            isMaleVoiceName(n) && !isFemaleVoiceName(n)
-                        } ?: devanagariVoices.firstOrNull() ?: sortedIndianVoices.firstOrNull()
-                    }
-
+                    val targetVoice = rankedVoices.firstOrNull()
                     if (targetVoice != null) {
                         ttsInstance.voice = targetVoice
                         val chosenName = targetVoice.name.lowercase(Locale.ROOT)
                         isSelectedVoiceNativeMale = isMaleVoiceName(chosenName) && !isFemaleVoiceName(chosenName)
                         isSelectedVoiceNativeFemale = isFemaleVoiceName(chosenName) && !isMaleVoiceName(chosenName)
                         isDevanagariVoiceActive = targetVoice.locale.language.lowercase(Locale.ROOT) in devanagariLanguages
+                        val localeLabel = NinadaNeuralVoiceEngine.SUPPORTED_PACKS
+                            .firstOrNull { it.code == targetVoice.locale.language.lowercase(Locale.ROOT) }
+                            ?.nativeLabel ?: targetVoice.locale.displayLanguage
+                        val qualityBadge = if (targetVoice.quality >= Voice.QUALITY_HIGH || chosenName.contains("neural")) {
+                            "Device Neural TTS"
+                        } else {
+                            "Device TTS"
+                        }
+                        lastConfiguredVoiceLabel = "$qualityBadge · $localeLabel"
                     } else {
-                        ttsInstance.language = baseIndianLocale
+                        ttsInstance.language = baseLocale
+                        lastConfiguredVoiceLabel = "Device TTS · ${baseLocale.displayLanguage}"
                     }
                 }
             } catch (_: Throwable) {}
         }
 
-        // Step 3: Configure natural, crystal-clear TTS pitch & speech rate
         val userSpeed = _playbackState.value.speed
+        val isChantingSanskrit = targetLangCode.equals("sa", ignoreCase = true)
         if (isFemale) {
-            // Female Pandit (महिला पुरोहित / विदुषी): Clear, warm, natural female pitch
-            val pitch = if (isSelectedVoiceNativeMale) 1.22f else 1.08f
+            val pitch = if (isSelectedVoiceNativeMale) 1.20f else if (isChantingSanskrit) 1.04f else 1.02f
             ttsInstance.setPitch(pitch)
-            ttsInstance.setSpeechRate((userSpeed * 0.94f).coerceIn(0.75f, 1.15f))
+            ttsInstance.setSpeechRate((userSpeed * (if (isChantingSanskrit) 0.92f else 0.98f)).coerceIn(0.72f, 1.25f))
         } else {
-            // Male Pandit (पुरुष पुरोहित): Clear, resonant, natural male pitch without formant distortion
-            val pitch = if (isSelectedVoiceNativeMale) 0.86f else 0.76f
+            val pitch = if (isSelectedVoiceNativeMale) 0.88f else 0.78f
             ttsInstance.setPitch(pitch)
-            ttsInstance.setSpeechRate((userSpeed * 0.92f).coerceIn(0.74f, 1.12f))
+            ttsInstance.setSpeechRate((userSpeed * (if (isChantingSanskrit) 0.90f else 0.96f)).coerceIn(0.70f, 1.20f))
         }
     }
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             val ttsInstance = tts ?: return
-            applyVoiceAndPitchConfig(ttsInstance)
+            applyVoiceAndPitchConfig(ttsInstance, activePlaybackLangCode)
 
             ttsInstance.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     engineScope.launch {
-                        _playbackState.value = _playbackState.value.copy(isPlaying = true)
+                        _playbackState.value = _playbackState.value.copy(
+                            isPlaying = true,
+                            isSynthesizing = false
+                        )
                     }
                 }
 
@@ -296,16 +433,57 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             })
 
             isTtsReady = true
-            // If playMantra was invoked before TTS finished initializing, start speaking now
-            if (_playbackState.value.isPlaying && activeMantra != null) {
+            // If playback was requested while TTS was still initializing, start immediately
+            if (_playbackState.value.isPlaying && activeMantra != null && voicePlaybackJob?.isActive != true) {
                 speakCurrentRound()
+            }
+        } else if (!triedDefaultTtsFallback) {
+            // Google TTS engine was unavailable or blocked; seamlessly retry with device default TTS!
+            initializeTtsEngine(preferGoogleEngine = false)
+        } else {
+            engineScope.launch {
+                _playbackState.value = _playbackState.value.copy(
+                    audioStatusMessage = "Device TTS unavailable — download Ninada Neural voice pack for offline chanting."
+                )
             }
         }
     }
 
     private fun handleUtteranceError(utteranceId: String?) {
         engineScope.launch {
-            _playbackState.value = _playbackState.value.copy(isPlaying = false)
+            // If a Devanagari utterance errored, retry once using phonetic transliteration in Indian English
+            val mantra = activeMantra
+            val ttsInstance = tts
+            if (mantra != null &&
+                ttsInstance != null &&
+                utteranceId != null &&
+                !utteranceId.endsWith("_fallback") &&
+                activePlaybackLangCode == "sa"
+            ) {
+                val fallbackText = buildTransliteratedChantFallback(mantra)
+                if (fallbackText.isNotBlank()) {
+                    applyVoiceAndPitchConfig(ttsInstance, "en")
+                    val retryId = "${utteranceId}_fallback"
+                    val params = Bundle().apply {
+                        putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, retryId)
+                        putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+                        putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+                    }
+                    _playbackState.value = _playbackState.value.copy(
+                        activeVoiceEngineLabel = "Device Voice · Transliterated",
+                        audioStatusMessage = "Using phonetic recitation — download Ninada Sanskrit pack for 24 kHz neural chanting."
+                    )
+                    ttsInstance.speak(fallbackText, TextToSpeech.QUEUE_FLUSH, params, retryId)
+                    return@launch
+                }
+            }
+            _playbackState.value = _playbackState.value.copy(
+                isPlaying = false,
+                isSynthesizing = false,
+                audioStatusMessage = "Audio output interrupted. Check media volume or download Ninada voice pack."
+            )
+            stopInstrumentAccompaniment()
+            abandonSpeechAudioFocus()
         }
     }
 
@@ -319,7 +497,8 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         targetRounds: Int = _playbackState.value.targetRounds,
         speed: Float = _playbackState.value.speed,
         withTanpura: Boolean = _playbackState.value.isTanpuraEnabled,
-        withTabla: Boolean = _playbackState.value.isTablaEnabled
+        withTabla: Boolean = _playbackState.value.isTablaEnabled,
+        transliteration: String = ""
     ) {
         val dummyMantra = FestivalPujaMantra(
             id = id,
@@ -327,7 +506,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             ritualStage = "Puja",
             title = mantraTitle,
             sanskrit = sanskritText,
-            transliteration = "",
+            transliteration = transliteration,
             meaning = "",
             chantCountRecommendation = "${targetRounds}x"
         )
@@ -335,7 +514,8 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     }
 
     /**
-     * Start chanting a specific festival puja mantra.
+     * Start chanting a specific festival puja mantra in Classical Sanskrit (Ninada `sa` first,
+     * seamless high-quality neural TTS fallback if not yet cached).
      */
     fun playMantra(
         mantra: FestivalPujaMantra,
@@ -344,11 +524,22 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         withTanpura: Boolean = _playbackState.value.isTanpuraEnabled,
         withTabla: Boolean = _playbackState.value.isTablaEnabled
     ) {
+        activePlaybackGeneration++
         previewAutoStopJob?.cancel()
+        tts?.stop()
         stopVoiceTrack()
         activeMantra = mantra
+        activePlaybackLangCode = "sa"
+
+        val initialEngineLabel = if (ninadaEngine.isPackReady("sa", activeVoiceGender)) {
+            "Ninada Neural 24kHz · संस्कृतम्"
+        } else {
+            lastConfiguredVoiceLabel.ifBlank { "Indian Neural TTS · संस्कृतम्" }
+        }
+
         _playbackState.value = MantraPlaybackState(
             isPlaying = true,
+            isSynthesizing = ninadaEngine.isPackReady("sa", activeVoiceGender),
             currentMantraId = mantra.id,
             currentMantraTitle = mantra.title,
             currentMantraSanskrit = mantra.sanskrit,
@@ -358,11 +549,13 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             speed = speed,
             isTanpuraEnabled = withTanpura,
             isTablaEnabled = withTabla,
-            isCompleted = false
+            isCompleted = false,
+            activeLanguageCode = "sa",
+            activeVoiceEngineLabel = initialEngineLabel,
+            audioStatusMessage = null
         )
 
-        tts?.let { applyVoiceAndPitchConfig(it) }
-
+        requestSpeechAudioFocus()
         if (withTanpura || withTabla) {
             startInstrumentAccompaniment()
         } else {
@@ -370,6 +563,89 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         }
 
         speakCurrentRound()
+    }
+
+    /**
+     * Speaks a localized mantra meaning, festival explanation, or greeting naturally in the
+     * user's chosen [language] (Hindi, Marathi, Gujarati, Tamil, Telugu, Kannada, Bengali, or English),
+     * using that language's Ninada 24 kHz ONNX neural pack when cached or the best matching device
+     * neural voice otherwise.
+     */
+    fun playLocalizedNarration(
+        id: String,
+        title: String,
+        text: String,
+        language: AppLanguage = activeAppLanguage
+    ) {
+        if (text.isBlank()) return
+        activePlaybackGeneration++
+        previewAutoStopJob?.cancel()
+        tts?.stop()
+        stopVoiceTrack()
+        stopInstrumentAccompaniment()
+
+        activeAppLanguage = language
+        activePlaybackLangCode = language.code
+        activeMantra = FestivalPujaMantra(
+            id = id,
+            stepNumber = 1,
+            ritualStage = language.nativeName,
+            title = title,
+            sanskrit = text,
+            transliteration = text,
+            meaning = text,
+            chantCountRecommendation = "1x"
+        )
+
+        val engineLabel = if (ninadaEngine.isPackReady(language.code, activeVoiceGender)) {
+            "Ninada Neural 24kHz · ${language.nativeName}"
+        } else {
+            "Device Neural TTS · ${language.nativeName}"
+        }
+
+        _playbackState.value = _playbackState.value.copy(
+            isPlaying = true,
+            isSynthesizing = ninadaEngine.isPackReady(language.code, activeVoiceGender),
+            currentMantraId = id,
+            currentMantraTitle = title,
+            currentMantraSanskrit = text,
+            currentRound = 0,
+            targetRounds = 1,
+            isCompleted = false,
+            activeLanguageCode = language.code,
+            activeVoiceEngineLabel = engineLabel,
+            audioStatusMessage = null
+        )
+
+        requestSpeechAudioFocus()
+        speakCurrentRound()
+    }
+
+    /**
+     * Plays a short natural voice sample for any supported Ninada language pack (`sa`, `hi`, `mr`,
+     * `gu`, `ta`, `te`, `kn`, `bn`, `en`) so the user can immediately verify audible playback.
+     */
+    fun previewLanguageVoice(languageCode: String) {
+        val pack = ninadaEngine.getPackByCode(languageCode) ?: return
+        if (pack.code == "sa") {
+            playMantra(
+                id = "preview_sa",
+                sanskritText = pack.samplePhrase,
+                mantraTitle = pack.displayName,
+                targetRounds = 1,
+                speed = _playbackState.value.speed,
+                withTanpura = false,
+                withTabla = false,
+                transliteration = "Om Gam Ganapataye Namaha. Shubham Bhavatu."
+            )
+        } else {
+            playLocalizedNarration(
+                id = "preview_${pack.code}",
+                title = pack.displayName,
+                text = pack.samplePhrase,
+                language = pack.appLanguage ?: AppLanguage.ENGLISH
+            )
+        }
     }
 
     /**
@@ -387,41 +663,53 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     }
 
     fun pause() {
+        activePlaybackGeneration++
         previewAutoStopJob?.cancel()
         tts?.stop()
         stopVoiceTrack()
         stopInstrumentAccompaniment()
-        _playbackState.value = _playbackState.value.copy(isPlaying = false)
+        abandonSpeechAudioFocus()
+        _playbackState.value = _playbackState.value.copy(
+            isPlaying = false,
+            isSynthesizing = false
+        )
     }
 
     fun resume() {
         if (activeMantra == null) return
+        activePlaybackGeneration++
         previewAutoStopJob?.cancel()
         _playbackState.value = _playbackState.value.copy(isPlaying = true, isCompleted = false)
-        tts?.let { applyVoiceAndPitchConfig(it) }
-        if (_playbackState.value.isTanpuraEnabled || _playbackState.value.isTablaEnabled) {
+        requestSpeechAudioFocus()
+        if (activePlaybackLangCode == "sa" &&
+            (_playbackState.value.isTanpuraEnabled || _playbackState.value.isTablaEnabled)
+        ) {
             startInstrumentAccompaniment()
         }
         speakCurrentRound()
     }
 
     fun stop() {
+        activePlaybackGeneration++
         previewAutoStopJob?.cancel()
         tts?.stop()
         stopVoiceTrack()
         stopInstrumentAccompaniment()
+        abandonSpeechAudioFocus()
         _playbackState.value = _playbackState.value.copy(
             isPlaying = false,
+            isSynthesizing = false,
             currentMantraId = null,
             currentRound = 0,
-            isCompleted = false
+            isCompleted = false,
+            audioStatusMessage = null
         )
     }
 
     fun setSpeed(speed: Float) {
         val normalized = speed.coerceIn(0.5f, 2.0f)
         _playbackState.value = _playbackState.value.copy(speed = normalized)
-        tts?.let { applyVoiceAndPitchConfig(it) }
+        tts?.let { if (isTtsReady) applyVoiceAndPitchConfig(it, activePlaybackLangCode) }
     }
 
     fun setTargetRounds(target: Int) {
@@ -449,7 +737,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 stopInstrumentAccompaniment()
             }
         } else {
-            // When user toggles Tanpura or Tabla ON while idle, play a 3.0s gentle temple instrument preview
             previewAutoStopJob?.cancel()
             if (state.isTanpuraEnabled || state.isTablaEnabled) {
                 startInstrumentAccompaniment()
@@ -484,19 +771,163 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     private fun speakCurrentRound() {
         val mantra = activeMantra ?: return
+        val generation = activePlaybackGeneration
+        val langCode = activePlaybackLangCode
+        val speed = _playbackState.value.speed
+
+        stopVoiceTrack()
+
+        // Tier 1: Try Ninada 24 kHz On-Device Neural ONNX synthesis if this language pack is installed
+        if (ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
+            voicePlaybackJob = engineScope.launch {
+                _playbackState.value = _playbackState.value.copy(isSynthesizing = true)
+                val synthesisText = if (langCode == "sa") {
+                    formatForPanditChanting(mantra.sanskrit, devanagariSupported = true)
+                } else {
+                    mantra.sanskrit.trim()
+                }
+                val result = ninadaEngine.synthesizePcm24k(
+                    rawText = synthesisText,
+                    languageCode = langCode,
+                    gender = activeVoiceGender,
+                    speed = speed
+                )
+                if (generation != activePlaybackGeneration || !_playbackState.value.isPlaying) {
+                    return@launch
+                }
+
+                if (result != null && result.pcm16.isNotEmpty()) {
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = false,
+                        activeVoiceEngineLabel = result.engineLabel,
+                        audioStatusMessage = null
+                    )
+                    val playedOk = playPcmOnAudioTrack(result.pcm16, result.sampleRate, generation)
+                    if (playedOk && generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
+                        handleChantCompleted()
+                        return@launch
+                    }
+                }
+
+                // Seamless fallback to Tier 2 if ONNX synthesis produced empty/unsupported output
+                if (generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
+                    _playbackState.value = _playbackState.value.copy(isSynthesizing = false)
+                    speakWithDeviceNeuralTts(mantra, langCode)
+                }
+            }
+            return
+        }
+
+        // Tier 2: High-Quality Multi-Language Device Neural TTS
+        speakWithDeviceNeuralTts(mantra, langCode)
+    }
+
+    private fun speakWithDeviceNeuralTts(mantra: FestivalPujaMantra, langCode: String) {
         val ttsInstance = tts ?: return
         if (!isTtsReady) return
 
-        stopVoiceTrack()
-        applyVoiceAndPitchConfig(ttsInstance)
+        applyVoiceAndPitchConfig(ttsInstance, langCode)
 
-        val utteranceId = "mantra_${mantra.id}_round_${_playbackState.value.currentRound}"
-        val textToSpeak = formatForPanditChanting(mantra.sanskrit, isDevanagariVoiceActive)
+        val utteranceId = "mantra_${mantra.id}_${langCode}_round_${_playbackState.value.currentRound}"
+        val textToSpeak: String
+        val activeEngineLabel: String
+
+        if (langCode == "sa") {
+            if (isDevanagariVoiceActive) {
+                textToSpeak = formatForPanditChanting(mantra.sanskrit, devanagariSupported = true)
+                activeEngineLabel = lastConfiguredVoiceLabel
+            } else {
+                // Critical anti-silence fallback: never send raw Devanagari to a non-Devanagari voice
+                textToSpeak = buildTransliteratedChantFallback(mantra)
+                activeEngineLabel = "Device Voice · Phonetic Sanskrit"
+            }
+        } else {
+            textToSpeak = mantra.sanskrit.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+            activeEngineLabel = lastConfiguredVoiceLabel
+        }
+
+        if (textToSpeak.isBlank()) return
+
+        _playbackState.value = _playbackState.value.copy(
+            isSynthesizing = false,
+            activeVoiceEngineLabel = activeEngineLabel
+        )
+
         val params = Bundle().apply {
             putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
         }
-        ttsInstance.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        val status = ttsInstance.speak(textToSpeak, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        if (status == TextToSpeech.ERROR) {
+            handleUtteranceError(utteranceId)
+        }
+    }
+
+    private suspend fun playPcmOnAudioTrack(
+        pcm16: ShortArray,
+        sampleRate: Int,
+        generation: Long
+    ): Boolean = withContext(Dispatchers.Default) {
+        var track: AudioTrack? = null
+        try {
+            val minBuf = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+            val bufferBytes = (if (minBuf > 0) minBuf else sampleRate / 4).coerceAtLeast(4096)
+
+            track = AudioTrack.Builder()
+                .setAudioAttributes(buildSpeechAudioAttributes())
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferBytes)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                track.setVolume(1.0f)
+            }
+
+            voiceTrack = track
+            track.play()
+
+            var offset = 0
+            val chunkSize = 2048
+            while (isActive && generation == activePlaybackGeneration && offset < pcm16.size) {
+                val count = (pcm16.size - offset).coerceAtMost(chunkSize)
+                val written = track.write(pcm16, offset, count)
+                if (written < 0) break
+                offset += count
+            }
+
+            // Allow hardware audio pipeline to drain final buffer smoothly
+            if (isActive && generation == activePlaybackGeneration) {
+                delay(180)
+            }
+            offset >= pcm16.size
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            AppCrashMonitor.recordHandledException("MantraAudioEngine.playPcm", t)
+            false
+        } finally {
+            try {
+                track?.pause()
+                track?.flush()
+                track?.stop()
+                track?.release()
+            } catch (_: Throwable) {}
+            if (voiceTrack === track) {
+                voiceTrack = null
+            }
+        }
     }
 
     private fun stopVoiceTrack() {
@@ -520,22 +951,62 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
      *    every Sanskrit word 100% intact for crystal-clear intelligibility.
      */
     internal fun formatForPanditChanting(raw: String, devanagariSupported: Boolean = true): String {
-        return raw
-            // Strip any parenthetical English annotations e.g. (Jain: ...), (Rigveda ...)
+        val cleaned = raw
             .replace(Regex("\\([A-Za-z0-9 .,:\\-]+\\)"), " ")
-            // Strip any stray Latin words inside a Devanagari mantra so TTS never switches to English
             .let { text ->
                 val hasDevanagari = text.any { it in '\u0900'..'\u097F' }
                 if (hasDevanagari) text.replace(Regex("[A-Za-z]+"), " ") else text
             }
-            // Intone sacred Pranava ॐ as resonant Indian ओम्
             .replace("ॐ", "ओम्, ")
-            // Natural pauses for pada (।) and shloka (॥) boundaries
             .replace("॥", ". ")
             .replace("।", ", ")
             .replace(";", ", ")
             .replace("...", ", ")
             .replace("\n", ", ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return if (devanagariSupported) cleaned else transliterateDevanagariToPhonetic(cleaned)
+    }
+
+    internal fun buildTransliteratedChantFallback(mantra: FestivalPujaMantra): String {
+        val explicit = mantra.transliteration
+            .replace("||", ". ")
+            .replace("|", ", ")
+            .replace("\n", ", ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        if (explicit.isNotBlank()) return explicit
+        return transliterateDevanagariToPhonetic(mantra.sanskrit)
+    }
+
+    internal fun transliterateDevanagariToPhonetic(text: String): String {
+        val sb = StringBuilder(text.length * 2)
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            val next = text.getOrNull(i + 1)
+            val consonant = DEVANAGARI_CONSONANTS[c]
+            if (consonant != null) {
+                sb.append(consonant)
+                when {
+                    next == '\u094D' -> {
+                        // Halant/virama suppresses inherent 'a'
+                        i++
+                    }
+                    next != null && DEVANAGARI_MATRAS.containsKey(next) -> {
+                        sb.append(DEVANAGARI_MATRAS[next])
+                        i++
+                    }
+                    else -> sb.append("a")
+                }
+            } else {
+                sb.append(DEVANAGARI_VOWELS_AND_SIGNS[c] ?: c.toString())
+            }
+            i++
+        }
+        return sb.toString()
+            .replace("॥", ". ")
+            .replace("।", ", ")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
@@ -549,21 +1020,20 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             triggerBeadHaptic()
 
             if (nextRound >= currentState.targetRounds) {
-                // Completed target rounds (e.g. 1, 11, 21, 108)
                 _playbackState.value = currentState.copy(
                     currentRound = nextRound,
                     isPlaying = false,
+                    isSynthesizing = false,
                     isCompleted = true
                 )
                 triggerCompletionHaptic()
-                // Let the gentle Tanpura + Tabla fade after 1.2s
                 delay(1200)
                 if (!_playbackState.value.isPlaying) {
                     stopInstrumentAccompaniment()
+                    abandonSpeechAudioFocus()
                 }
             } else {
                 _playbackState.value = currentState.copy(currentRound = nextRound)
-                // Natural 1100ms breathing pause between mantra rounds
                 delay(1100)
                 if (_playbackState.value.isPlaying) {
                     speakCurrentRound()
@@ -642,18 +1112,15 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                     .build()
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    // Keep overall accompaniment track volume soft (18%) so voice is always crystal clear
                     track.setVolume(0.18f)
                 }
 
                 instrumentTrack = track
                 track.play()
 
-                // --- TANPURA TUNING (Kali Ek / C# — Classic Pandit Pitch) ---
                 val stringFreqs = doubleArrayOf(207.65, 277.18, 277.62, 138.59)
                 val pluckIntervalSec = 1.25
                 val tanpuraCycleSec = pluckIntervalSec * 4.0
-                // Adaptive Tanpura harmonics: 2 harmonics in battery saver mode to cut DSP overhead by 50%
                 val isLowPower = AppBatteryMonitor.isLowPowerModeActive(appContext)
                 val harmonicWeights = if (isLowPower) {
                     doubleArrayOf(0.45, 0.25)
@@ -661,10 +1128,9 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                     doubleArrayOf(0.38, 0.30, 0.16, 0.08)
                 }
 
-                // --- TABLA BHAJAN KEHERWA THEKA (8 Matras: Dha - Ge - Na - Ti | Na - Ka - Dhi - Na) ---
                 val matraDurationSec = 0.40
                 val tablaCycleSec = matraDurationSec * 8.0
-                val dayanSaFreq = 277.18 // Tuned to Tonic C#4
+                val dayanSaFreq = 277.18
 
                 val pcmBuffer = ShortArray(frameSamples)
                 var globalSampleIndex = 0L
@@ -685,7 +1151,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
                         var mix = 0.0
 
-                        // 1. Soft 4-String Plucked Tanpura Drone
                         if (tanpuraOn) {
                             var tanpuraSignal = 0.0
                             val cyclePos = t % tanpuraCycleSec
@@ -721,7 +1186,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                             mix += tanpuraSignal * 0.20
                         }
 
-                        // 2. Soft, Warm Indian Tabla (Dayan + Bayan) in 8-Matra Keherwa Theka
                         if (tablaOn) {
                             val tablaCyclePos = t % tablaCycleSec
                             val bolIndex = (tablaCyclePos / matraDurationSec).toInt().coerceIn(0, 7)
@@ -738,8 +1202,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                                 val env = (bolAge / 0.010).coerceIn(0.0, 1.0) * exp(-bolAge / 0.12)
                                 val pitchGlide = 106.0 + 22.0 * sin((bolAge / 0.22).coerceIn(0.0, 1.0) * PI)
                                 val phaseB = 2.0 * PI * pitchGlide * bolAge
-                                val bayanWave = sin(phaseB) * 0.60 +
-                                    sin(phaseB * 2.0) * 0.28
+                                val bayanWave = sin(phaseB) * 0.60 + sin(phaseB * 2.0) * 0.28
                                 tablaSignal += bayanWave * env * 0.42
                             }
 
@@ -747,30 +1210,26 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                                 val accent = if (bolIndex == 0) 0.90 else if (bolIndex == 7) 0.60 else 0.75
                                 val env = (bolAge / 0.006).coerceIn(0.0, 1.0) * exp(-bolAge / 0.070)
                                 val phaseD = 2.0 * PI * dayanSaFreq * bolAge
-                                val dayanWave = sin(phaseD) * 0.55 +
-                                    sin(phaseD * 2.0) * 0.30
+                                val dayanWave = sin(phaseD) * 0.55 + sin(phaseD * 2.0) * 0.30
                                 tablaSignal += dayanWave * env * 0.36 * accent
                             }
 
                             if (hasDayanTin && bolAge < 0.30) {
                                 val env = (bolAge / 0.006).coerceIn(0.0, 1.0) * exp(-bolAge / 0.105)
                                 val phaseT = 2.0 * PI * dayanSaFreq * bolAge
-                                val tinWave = sin(phaseT) * 0.60 +
-                                    sin(phaseT * 2.0) * 0.28
+                                val tinWave = sin(phaseT) * 0.60 + sin(phaseT * 2.0) * 0.28
                                 tablaSignal += tinWave * env * 0.35
                             }
 
                             if (hasBayanKa && bolAge < 0.09) {
                                 val env = (bolAge / 0.004).coerceIn(0.0, 1.0) * exp(-bolAge / 0.022)
-                                val kaWave = sin(2.0 * PI * 170.0 * bolAge) * 0.65 +
-                                    sin(2.0 * PI * 340.0 * bolAge) * 0.25
+                                val kaWave = sin(2.0 * PI * 170.0 * bolAge) * 0.65 + sin(2.0 * PI * 340.0 * bolAge) * 0.25
                                 tablaSignal += kaWave * env * 0.30
                             }
 
                             mix += tablaSignal * 0.22
                         }
 
-                        // Soft-clip limiter
                         val clamped = mix.coerceIn(-0.60, 0.60)
                         pcmBuffer[i] = (clamped * Short.MAX_VALUE).toInt()
                             .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
@@ -806,6 +1265,7 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
     fun release() {
         stop()
+        ninadaEngine.release()
         tts?.shutdown()
         tts = null
         isTtsReady = false
@@ -821,17 +1281,34 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 instance ?: MantraAudioEngine(context.applicationContext).also { instance = it }
             }
         }
+
+        private val DEVANAGARI_CONSONANTS = mapOf(
+            'क' to "k", 'ख' to "kh", 'ग' to "g", 'घ' to "gh", 'ङ' to "ng",
+            'च' to "ch", 'छ' to "chh", 'ज' to "j", 'झ' to "jh", 'ञ' to "ny",
+            'ट' to "t", 'ठ' to "th", 'ड' to "d", 'ढ' to "dh", 'ण' to "n",
+            'त' to "t", 'थ' to "th", 'द' to "d", 'ध' to "dh", 'न' to "n",
+            'प' to "p", 'फ' to "ph", 'ब' to "b", 'भ' to "bh", 'म' to "m",
+            'य' to "y", 'र' to "r", 'ल' to "l", 'व' to "v",
+            'श' to "sh", 'ष' to "sh", 'स' to "s", 'ह' to "h", 'ळ' to "l"
+        )
+
+        private val DEVANAGARI_MATRAS = mapOf(
+            'ा' to "aa", 'ि' to "i", 'ी' to "ee", 'ु' to "u", 'ू' to "oo",
+            'ृ' to "ri", 'े' to "e", 'ै' to "ai", 'ो' to "o", 'ौ' to "au"
+        )
+
+        private val DEVANAGARI_VOWELS_AND_SIGNS = mapOf(
+            'ॐ' to "Om, ", 'अ' to "a", 'आ' to "aa", 'इ' to "i", 'ई' to "ee",
+            'उ' to "u", 'ऊ' to "oo", 'ऋ' to "ri", 'ए' to "e", 'ऐ' to "ai",
+            'ओ' to "o", 'औ' to "au", 'ं' to "m", 'ँ' to "n", 'ः' to "ha",
+            'ऽ' to ""
+        )
     }
 }
 
 /**
  * Real-time DSP processor that transforms raw TTS synthesis into a warm, human Indian Pandit
- * vocal recitation with:
- * 1. Hann-windowed Overlap-Add (OLA) pitch & vocal-tract shifting (guaranteeing a deep baritone
- *    Male Pandit vs melodious Female Pandit Vidushi on every device).
- * 2. Warm vocal body resonance + 2-pole Butterworth anti-metallic smoothing filter.
- * 3. Subtle human vocal micro-vibrato (4.6 Hz).
- * 4. Sacred Temple Garbhagriha Schroeder Reverb (3 damped comb filters + 2 all-pass diffusers).
+ * vocal recitation with OLA pitch shifting, anti-metallic low-pass filter, and Temple Sanctum reverb.
  */
 internal object VedicPanditVoiceProcessor {
 
@@ -844,35 +1321,26 @@ internal object VedicPanditVoiceProcessor {
     ): ShortArray {
         if (input.isEmpty()) return input
 
-        // 1. Convert to normalized float [-1.0, 1.0]
         val floatIn = FloatArray(input.size) { input[it] / 32768f }
-
-        // 2. Pitch-shift and time-stretch via Hann-windowed Overlap-Add (SOLA/OLA)
         val pitchShifted = shiftPitchAndTempoOla(
             input = floatIn,
             sampleRate = sampleRate,
             pitchFactor = pitchFactor.coerceIn(0.60f, 1.45f),
             tempoStretch = tempoStretch.coerceIn(0.85f, 1.35f)
         )
-
-        // 3. Apply human vocal chest warmth & anti-robotic low-pass smoothing filter
         val filtered = applyVocalWarmthAndAntiRobotFilter(
             input = pitchShifted,
             sampleRate = sampleRate,
             isMalePandit = isMalePandit
         )
-
-        // 4. Apply subtle temple Garbhagriha sanctum reverb
         val reverberated = applyTempleSanctumReverb(
             input = filtered,
             sampleRate = sampleRate
         )
 
-        // 5. Convert back to 16-bit PCM with warm soft-saturation
         val out = ShortArray(reverberated.size)
         for (i in reverberated.indices) {
             var x = reverberated[i] * 1.15f
-            // Soft saturation curve: x / (1 + |x|*0.25)
             x = x / (1f + kotlin.math.abs(x) * 0.22f)
             out[i] = (x.coerceIn(-0.98f, 0.98f) * 32767f).roundToInt()
                 .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
@@ -887,7 +1355,6 @@ internal object VedicPanditVoiceProcessor {
         pitchFactor: Float,
         tempoStretch: Float
     ): FloatArray {
-        // First resample for pitch shift (with subtle 4.6 Hz human throat vibrato)
         val resampledLength = (input.size / pitchFactor).toInt().coerceAtLeast(1)
         val resampled = FloatArray(resampledLength)
         for (i in 0 until resampledLength) {
@@ -901,13 +1368,12 @@ internal object VedicPanditVoiceProcessor {
             resampled[i] = s0 + frac * (s1 - s0)
         }
 
-        // Now restore/stretch duration via Hann-windowed Overlap-Add so pitch shift doesn't alter speed
         val targetStretch = tempoStretch * pitchFactor
         if (kotlin.math.abs(targetStretch - 1.0f) < 0.03f) {
             return resampled
         }
 
-        val windowSize = (sampleRate * 0.036).toInt().coerceAtLeast(256) // 36ms grain window
+        val windowSize = (sampleRate * 0.036).toInt().coerceAtLeast(256)
         val hopOut = windowSize / 2
         val hopIn = (hopOut / targetStretch).toInt().coerceAtLeast(1)
         val outLength = (resampled.size * targetStretch).toInt().coerceAtLeast(windowSize)
@@ -944,14 +1410,11 @@ internal object VedicPanditVoiceProcessor {
         isMalePandit: Boolean
     ): FloatArray {
         val out = FloatArray(input.size)
-
-        // Low-pass cutoff to strip harsh metallic TTS artifacts (3300 Hz for Male Baritone, 4200 Hz for Female Vidushi)
         val cutoffHz = if (isMalePandit) 3300.0 else 4200.0
         val rc = 1.0 / (2.0 * PI * cutoffHz)
         val dt = 1.0 / sampleRate.toDouble()
         val alphaLp = (dt / (rc + dt)).toFloat()
 
-        // Warm chest resonance low-pass state (165 Hz for Male Baritone chest, 250 Hz for Female warmth)
         val chestCutoff = if (isMalePandit) 165.0 else 250.0
         val rcChest = 1.0 / (2.0 * PI * chestCutoff)
         val alphaChest = (dt / (rcChest + dt)).toFloat()
@@ -976,7 +1439,6 @@ internal object VedicPanditVoiceProcessor {
         input: FloatArray,
         sampleRate: Int
     ): FloatArray {
-        // Add 350ms tail for natural temple sanctum decay
         val tailSamples = (sampleRate * 0.35).toInt()
         val totalLen = input.size + tailSamples
         val out = FloatArray(totalLen)
