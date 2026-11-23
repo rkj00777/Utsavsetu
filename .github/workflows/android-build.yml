@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -42,20 +43,20 @@ jobs:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
 
-      - name: Prepare debug signing key
+      - name: Restore original AI Studio debug signing key
         shell: bash
         run: |
-          if [ ! -f debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=UtsavSetu CI Debug,O=Development,C=IN"
+          set -euo pipefail
+          test -n "$DEBUG_KEYSTORE_BASE64" || { echo "::error::DEBUG_KEYSTORE_BASE64 is missing. Add the original AI Studio debug keystore as a repository Actions secret."; exit 1; }
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 --decode > "$GITHUB_WORKSPACE/debug.keystore"
+          test -s "$GITHUB_WORKSPACE/debug.keystore"
+          ACTUAL_SHA256="$(keytool -list -v -keystore "$GITHUB_WORKSPACE/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print toupper($2); exit}')"
+          EXPECTED_SHA256="83A6E8496C5657EC4998F8CADCB557B55C29EAE694ADBA18BDCEE01C217AA413"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Debug keystore certificate mismatch. Refusing to build an APK that cannot update the existing installation."
+            exit 1
           fi
+          echo "Original UtsavSetu debug signing certificate verified."
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
@@ -68,6 +69,19 @@ jobs:
 
       - name: Build debug APK and App Bundle
         run: bash ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
+
+      - name: Verify built debug APK signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
+          ACTUAL_SHA256="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print toupper($2); exit}')"
+          EXPECTED_SHA256="83A6E8496C5657EC4998F8CADCB557B55C29EAE694ADBA18BDCEE01C217AA413"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Built APK signing certificate does not match the original UtsavSetu installation."
+            exit 1
+          fi
+          echo "Built APK certificate matches the original UtsavSetu installation."
 
       - name: Stage debug distributables
         shell: bash
