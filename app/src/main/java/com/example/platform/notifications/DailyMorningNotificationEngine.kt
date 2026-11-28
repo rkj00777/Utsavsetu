@@ -300,7 +300,7 @@ object DailyMorningNotificationEngine {
             .getString(KEY_AUDIT_LOG, null)
         if (raw.isNullOrBlank()) return emptyList()
         return raw.split(RECORD_SEP).mapNotNull { record ->
-            val parts = record.split(FIELD_SEP)
+            val parts = record.split(FIELD_SEP, limit = 7)
             if (parts.size < 7) return@mapNotNull null
             val ts = parts[0].toLongOrNull() ?: return@mapNotNull null
             val mode = SchedulingMode.values().firstOrNull { it.name == parts[4] } ?: SchedulingMode.DISABLED
