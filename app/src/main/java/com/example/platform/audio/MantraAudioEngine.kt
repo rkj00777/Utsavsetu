@@ -42,7 +42,7 @@ data class MantraPlaybackState(
     val stepNumber: Int = 1,
     val currentRound: Int = 0,
     val targetRounds: Int = 1,
-    val speed: Float = 0.85f,
+    val speed: Float = 0.72f,
     val isTanpuraEnabled: Boolean = true,
     val isTablaEnabled: Boolean = true,
     val isCompleted: Boolean = false,
