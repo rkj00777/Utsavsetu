@@ -98,6 +98,11 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".platform.audio.NinadaV2WorkerService"
+            android:exported="false"
+            android:process=":ninada_worker" />
+
         <receiver
             android:name=".platform.notifications.ReminderBroadcastReceiver"
             android:exported="false" />
