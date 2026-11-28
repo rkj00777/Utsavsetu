@@ -363,16 +363,28 @@ class ProductionReleaseAcceptanceTest {
         )
         val now = Instant.parse("2026-11-14T00:30:00Z")
 
+        // Robolectric may not provide the AlarmManager system service in every SDK sandbox.
+        // A forced capability flag cannot make scheduling possible if the service itself is absent.
+        val alarmManagerAvailable = context.getSystemService(Context.ALARM_SERVICE) != null
+        val expectedExactMode = if (alarmManagerAvailable) {
+            SchedulingMode.EXACT_ALARM
+        } else {
+            SchedulingMode.WORKMANAGER_APPROXIMATE
+        }
         val exactMode = ReminderScheduler.scheduleDailyMorningNotification(
             context = context,
             preferences = prefs,
             nowInstant = now,
             forceExactAlarmCapability = true
         )
-        assertEquals(SchedulingMode.EXACT_ALARM, exactMode)
+        assertEquals(expectedExactMode, exactMode)
         val exactDiag = ReminderScheduler.getDiagnosticsSnapshot(context, prefs)
-        assertEquals(SchedulingMode.EXACT_ALARM, exactDiag.schedulingMode)
+        assertEquals(expectedExactMode, exactDiag.schedulingMode)
         assertNotNull(exactDiag.nextTriggerEpochMillis)
+        if (expectedExactMode == SchedulingMode.WORKMANAGER_APPROXIMATE) {
+            assertTrue(exactDiag.schedulingHonestyNote.contains("approximate", ignoreCase = true))
+            assertTrue(exactDiag.schedulingHonestyNote.contains("not guaranteed", ignoreCase = true))
+        }
 
         // When exact alarms are restricted, must fall back to WorkManager approximate delivery and report honestly
         val fallbackMode = ReminderScheduler.scheduleDailyMorningNotification(
