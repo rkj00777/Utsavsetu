@@ -777,24 +777,46 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
 
         stopVoiceTrack()
 
-        // Tier 1: Try Ninada 24 kHz On-Device Neural ONNX synthesis if this language pack is installed
-        if (ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
-            voicePlaybackJob = engineScope.launch {
-                _playbackState.value = _playbackState.value.copy(isSynthesizing = true)
+        // Ninada is the primary recitation engine. First-use model acquisition is automatic:
+        // download the selected language pack on Play, then synthesize and play without another tap.
+        voicePlaybackJob = engineScope.launch {
+            try {
+                if (!ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = true,
+                        activeVoiceEngineLabel = "Ninada Neural · Preparing",
+                        audioStatusMessage = "Preparing Ninada Sanskrit voice… downloading automatically."
+                    )
+                    val download = ninadaEngine.downloadLanguagePack(langCode, activeVoiceGender)
+                    if (generation != activePlaybackGeneration || !_playbackState.value.isPlaying) return@launch
+                    if (download.isFailure || !ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
+                        val message = download.exceptionOrNull()?.message
+                            ?: "Ninada voice pack could not be prepared."
+                        _playbackState.value = _playbackState.value.copy(
+                            isSynthesizing = false,
+                            audioStatusMessage = "$message Using device voice as fallback."
+                        )
+                        speakWithDeviceNeuralTts(mantra, langCode)
+                        return@launch
+                    }
+                }
+
+                _playbackState.value = _playbackState.value.copy(
+                    isSynthesizing = true,
+                    activeVoiceEngineLabel = "Ninada Neural · Sanskrit",
+                    audioStatusMessage = "Ninada is preparing the recitation…"
+                )
                 val synthesisText = if (langCode == "sa") {
                     formatForPanditChanting(mantra.sanskrit, devanagariSupported = true)
-                } else {
-                    mantra.sanskrit.trim()
-                }
+                } else mantra.sanskrit.trim()
+
                 val result = ninadaEngine.synthesizePcm24k(
                     rawText = synthesisText,
                     languageCode = langCode,
                     gender = activeVoiceGender,
                     speed = speed
                 )
-                if (generation != activePlaybackGeneration || !_playbackState.value.isPlaying) {
-                    return@launch
-                }
+                if (generation != activePlaybackGeneration || !_playbackState.value.isPlaying) return@launch
 
                 if (result != null && result.pcm16.isNotEmpty()) {
                     _playbackState.value = _playbackState.value.copy(
@@ -809,17 +831,26 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                     }
                 }
 
-                // Seamless fallback to Tier 2 if ONNX synthesis produced empty/unsupported output
                 if (generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
-                    _playbackState.value = _playbackState.value.copy(isSynthesizing = false)
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = false,
+                        audioStatusMessage = "Ninada synthesis or playback failed. Switching to device voice."
+                    )
+                    speakWithDeviceNeuralTts(mantra, langCode)
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                AppCrashMonitor.recordHandledException("MantraAudioEngine.playMantraNinada", t)
+                if (generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = false,
+                        audioStatusMessage = "Ninada could not start: ${t.message ?: "audio error"}. Using device voice."
+                    )
                     speakWithDeviceNeuralTts(mantra, langCode)
                 }
             }
-            return
         }
-
-        // Tier 2: High-Quality Multi-Language Device Neural TTS
-        speakWithDeviceNeuralTts(mantra, langCode)
     }
 
     private fun speakWithDeviceNeuralTts(mantra: FestivalPujaMantra, langCode: String) {
