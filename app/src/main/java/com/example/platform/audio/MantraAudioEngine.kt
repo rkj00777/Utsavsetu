@@ -810,9 +810,9 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                     formatForPanditChanting(mantra.sanskrit, devanagariSupported = true)
                 } else mantra.sanskrit.trim()
 
-                val result = ninadaEngine.synthesizePcm24k(
-                    rawText = synthesisText,
-                    languageCode = langCode,
+                val result = NinadaV2WorkerClient(appContext).synthesize(
+                    text = synthesisText,
+                    language = langCode,
                     gender = activeVoiceGender,
                     speed = speed
                 )
