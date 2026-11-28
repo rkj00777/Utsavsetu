@@ -2,7 +2,7 @@ name: Android build
 
 on:
   push:
-    branches: [main]
+    branches: [main, ninada-v2-rebuild]
     tags: ["v*"]
   pull_request:
     branches: [main]
