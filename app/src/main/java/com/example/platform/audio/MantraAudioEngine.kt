@@ -103,6 +103,9 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
     // Ninada 24 kHz Neural Voice AudioTrack
     private var voiceTrack: AudioTrack? = null
     private var voicePlaybackJob: Job? = null
+    // A failed/disconnected native worker is circuit-broken for this app process to prevent repeat SIGILL crashes.
+    @Volatile
+    private var ninadaWorkerCircuitBroken: Boolean = false
     @Volatile
     private var activePlaybackGeneration: Long = 0L
 
@@ -781,6 +784,15 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         // download the selected language pack on Play, then synthesize and play without another tap.
         voicePlaybackJob = engineScope.launch {
             try {
+                if (ninadaWorkerCircuitBroken) {
+                    _playbackState.value = _playbackState.value.copy(
+                        isSynthesizing = false,
+                        activeVoiceEngineLabel = "Device TTS · Fallback",
+                        audioStatusMessage = "Ninada native worker previously failed in this session. Using device voice."
+                    )
+                    speakWithDeviceNeuralTts(mantra, langCode)
+                    return@launch
+                }
                 if (!ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
                     _playbackState.value = _playbackState.value.copy(
                         isSynthesizing = true,
@@ -832,9 +844,13 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 }
 
                 if (generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
+                    // Null means the isolated worker failed, disconnected, timed out, or produced invalid PCM.
+                    // Circuit-break it for this process: a native SIGILL cannot be caught in Kotlin and repeat attempts are unsafe.
+                    ninadaWorkerCircuitBroken = true
                     _playbackState.value = _playbackState.value.copy(
                         isSynthesizing = false,
-                        audioStatusMessage = "Ninada synthesis or playback failed. Switching to device voice."
+                        activeVoiceEngineLabel = "Device TTS · Fallback",
+                        audioStatusMessage = "Ninada worker failed. Device voice fallback is active; Ninada is paused for this session."
                     )
                     speakWithDeviceNeuralTts(mantra, langCode)
                 }
