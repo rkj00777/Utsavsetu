@@ -42,24 +42,29 @@ jobs:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
 
-      - name: Diagnose secret format safely
+      - name: Restore and verify matching debug signing keystore
         shell: bash
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os
-          raw=os.environ.get('DEBUG_KEYSTORE_BASE64','')
-          print('Secret present:', bool(raw))
-          print('Length:', len(raw))
-          print('Expected Base64 length: 3536')
-          invalid=[(i,ord(ch)) for i,ch in enumerate(raw) if ch not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=']
-          print('Invalid-character count:', len(invalid))
-          print('Invalid-character positions/codepoints (not contents):', invalid[:30])
-          print('Padding count:', raw.count('='))
+          import os, base64
+          raw=os.environ.get('DEBUG_KEYSTORE_BASE64','').strip()
+          if not raw:
+              raise SystemExit('DEBUG_KEYSTORE_BASE64 is missing')
+          try:
+              data=base64.b64decode(raw, validate=True)
+          except Exception as e:
+              raise SystemExit('Secret is not valid Base64 text; recreate it from the keystore file') from e
+          if len(data) != 2650:
+              raise SystemExit(f'Decoded keystore size mismatch: {len(data)} bytes; expected 2650')
+          open('debug.keystore','wb').write(data)
+          print('Decoded keystore size validated.')
           PY
-          exit 1
+          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey > key-info.txt
+          grep -Fq '3F:50:AA:69:A1:C7:BF:EC:CD:1D:F5:16:3F:75:C0:1F:E6:9E:4D:B3' key-info.txt || { echo "::error::Debug certificate does not match installed UtsavSetu signing identity"; exit 1; }
+          echo "Verified matching debug signing certificate."
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
