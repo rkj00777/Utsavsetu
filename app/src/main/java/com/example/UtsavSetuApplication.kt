@@ -24,7 +24,11 @@ class UtsavSetuApplication : Application() {
 
         SecurityIntegrityManager.auditAppSecurity(this)
         runCatching { FirebaseApp.initializeApp(this) }
-        runCatching {
+        // Application.onCreate runs in every declared process. Keep Ads/WebView/Firebase app UI
+        // initialization out of the isolated Ninada worker process to prevent WebView data-dir locks.
+        val processName = if (android.os.Build.VERSION.SDK_INT >= 28) Application.getProcessName() else ""
+        val isNinadaWorker = processName.endsWith(":ninada_worker")
+        if (!isNinadaWorker) runCatching {
             if (BuildConfig.DEBUG && BuildConfig.USE_TEST_ADS) {
                 val requestConfig = com.google.android.gms.ads.RequestConfiguration.Builder()
                     .setTestDeviceIds(listOf(com.google.android.gms.ads.AdRequest.DEVICE_ID_EMULATOR))
