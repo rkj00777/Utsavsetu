@@ -3,6 +3,7 @@ package com.example.platform.audio
 import android.app.Service
 import android.content.Intent
 import android.os.*
+import android.util.Log
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.DataOutputStream
@@ -27,7 +28,8 @@ class NinadaV2WorkerService : Service() {
             send(reply, id, "invalid"); return
         }
         scope.launch {
-            val result = try { engine.synthesizePcm24k(t, lang, gender, speed) } catch (_: Throwable) { null }
+            val result = try { engine.synthesizePcm24k(t, lang, gender, speed) } catch (e: Throwable) { Log.e(TAG, "Synthesis exception lang=$lang id=$id", e); null }
+            if (result == null) Log.w(TAG, "Synthesis returned null lang=$lang id=$id; check pack, tokenizer, and ONNX output")
             val fileName = result?.takeIf { it.sampleRate == 24000 && it.pcm16.isNotEmpty() && it.pcm16.size <= MAX_SAMPLES }?.let {
                 try {
                     val dir = File(cacheDir, "ninada_worker_pcm").apply { mkdirs() }
@@ -44,7 +46,7 @@ class NinadaV2WorkerService : Service() {
                     putString(FILE, fileName); putString(LABEL, result.engineLabel)
                 } else putString(STATUS, "fail")
             }
-            try { reply.send(m) } catch (_: RemoteException) {}
+            try { reply.send(m) } catch (e: RemoteException) { Log.e(TAG, "IPC reply failed id=$id", e) }
         }
     }
     private fun send(reply: Messenger, id: Long, status: String) {
@@ -53,6 +55,7 @@ class NinadaV2WorkerService : Service() {
     }
     override fun onDestroy() { engine.release(); scope.cancel(); super.onDestroy() }
     companion object {
+        private const val TAG = "NinadaV2Worker"
         const val SYNTH=100; const val RESULT=101; const val ID="id"; const val TEXT="text"; const val LANG="lang"
         const val GENDER="gender"; const val SPEED="speed"; const val STATUS="status"; const val RATE="rate"
         const val FILE="file"; const val LABEL="label"; const val MAX_SAMPLES=1_200_000
