@@ -78,6 +78,18 @@ jobs:
       - name: Run JVM and Robolectric tests
         run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
 
+
+      - name: Upload unit-test diagnostics (even on failure)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: UtsavSetu-test-diagnostics
+          path: |
+            app/build/reports/tests/testDebugUnitTest/**
+            app/build/test-results/testDebugUnitTest/**
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build debug APK and App Bundle
         run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
 
