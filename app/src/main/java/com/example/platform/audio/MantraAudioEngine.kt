@@ -781,17 +781,6 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
         // download the selected language pack on Play, then synthesize and play without another tap.
         voicePlaybackJob = engineScope.launch {
             try {
-                // SAFETY CIRCUIT BREAKER: disable Ninada ONNX inference after native SIGILL crashes.
-                // Use Android TextToSpeech directly; do not download or execute the ONNX model.
-                if (generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
-                    _playbackState.value = _playbackState.value.copy(
-                        isSynthesizing = false,
-                        activeVoiceEngineLabel = "Device Voice · Safe Mode",
-                        audioStatusMessage = "Neural voice temporarily disabled for device stability. Using device voice."
-                    )
-                    speakWithDeviceNeuralTts(mantra, langCode)
-                }
-                return@launch
                 if (!ninadaEngine.isPackReady(langCode, activeVoiceGender)) {
                     _playbackState.value = _playbackState.value.copy(
                         isSynthesizing = true,
