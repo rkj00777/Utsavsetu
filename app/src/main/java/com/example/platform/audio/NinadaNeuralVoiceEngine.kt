@@ -456,9 +456,9 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
             return LongArray(0)
         }
         val ids = ArrayList<Long>(text.length * 2 + 2)
-        val blankId = vocabMap["_"] ?: vocabMap["<pad>"] ?: vocabMap["<blank>"] ?: 0L
+        val blankId = vocabMap["_"] ?: vocabMap["<BLNK>"] ?: vocabMap["<blank>"] ?: vocabMap["<PAD>"] ?: vocabMap["<pad>"] ?: 0L
         val spaceId = vocabMap[" "] ?: blankId
-        val useBlankInterleaving = vocabMap.containsKey("_") || vocabMap.containsKey("<pad>") || vocabMap.containsKey("<blank>")
+        val useBlankInterleaving = vocabMap.containsKey("_") || vocabMap.containsKey("<BLNK>") || vocabMap.containsKey("<blank>") || vocabMap.containsKey("<PAD>") || vocabMap.containsKey("<pad>")
         if (useBlankInterleaving) ids.add(blankId)
         for (ch in text) {
             val key = ch.toString()
@@ -507,9 +507,9 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
             } else {
                 val root = JSONObject(content)
                 when {
+                    root.has("languages") && root.getJSONObject("languages").has(langCode) -> parseVocabNode(root.getJSONObject("languages").get(langCode))
                     root.has(langCode) -> parseVocabNode(root.get(langCode))
-                    root.has("vocabs") && root.getJSONObject("vocabs").has(langCode) ->
-                        parseVocabNode(root.getJSONObject("vocabs").get(langCode))
+                    root.has("vocabs") && root.getJSONObject("vocabs").has(langCode) -> parseVocabNode(root.getJSONObject("vocabs").get(langCode))
                     root.has("symbols") -> parseVocabNode(root.get("symbols"))
                     root.has("token_to_id") -> parseVocabNode(root.get("token_to_id"))
                     else -> parseVocabObject(root)
@@ -525,6 +525,7 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
             is JSONArray -> parseVocabArray(node)
             is JSONObject -> {
                 when {
+                    node.has("char_to_id") -> parseVocabNode(node.get("char_to_id"))
                     node.has("symbols") -> parseVocabNode(node.get("symbols"))
                     node.has("token_to_id") -> parseVocabNode(node.get("token_to_id"))
                     node.has("vocab") -> parseVocabNode(node.get("vocab"))
