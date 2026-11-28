@@ -2,6 +2,7 @@ package com.example.platform.audio
 
 import android.content.*
 import android.os.*
+import android.util.Log
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.io.DataInputStream
@@ -33,9 +34,12 @@ class NinadaV2WorkerClient(private val context: Context) {
                     val filename = d.getString(NinadaV2WorkerService.FILE).orEmpty()
                     val rate = d.getInt(NinadaV2WorkerService.RATE)
                     val label = d.getString(NinadaV2WorkerService.LABEL).orEmpty()
-                    val result = if (d.getString(NinadaV2WorkerService.STATUS) == "ok" && filename.isNotBlank() && rate == 24000) {
+                    val status = d.getString(NinadaV2WorkerService.STATUS).orEmpty()
+                    Log.i("NinadaV2Client", "Worker response id=$id status=$status rate=$rate file=$filename")
+                    val result = if (status == "ok" && filename.isNotBlank() && rate == 24000) {
                         readPcmFile(filename)?.let { NinadaSynthesisResult(it, rate, language, label) }
                     } else null
+                    if (result == null) Log.w("NinadaV2Client", "No PCM result for request id=$id")
                     finish(result)
                 }
                 true
@@ -53,9 +57,9 @@ class NinadaV2WorkerClient(private val context: Context) {
                     }
                     try { Messenger(b).send(m) } catch (_: RemoteException) { finish(null) }
                 }
-                override fun onServiceDisconnected(n: ComponentName) { finish(null) }
-                override fun onBindingDied(n: ComponentName) { finish(null) }
-                override fun onNullBinding(n: ComponentName) { finish(null) }
+                override fun onServiceDisconnected(n: ComponentName) { Log.e("NinadaV2Client", "Worker disconnected"); finish(null) }
+                override fun onBindingDied(n: ComponentName) { Log.e("NinadaV2Client", "Worker binding died"); finish(null) }
+                override fun onNullBinding(n: ComponentName) { Log.e("NinadaV2Client", "Worker null binding"); finish(null) }
             }
             try {
                 bound = context.bindService(Intent(context, NinadaV2WorkerService::class.java), conn, Context.BIND_AUTO_CREATE)
