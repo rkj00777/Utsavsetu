@@ -111,8 +111,6 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
     fun isPackReady(languageCode: String, gender: String? = null): Boolean {
         val code = normalizeLangCode(languageCode)
         val model = findCachedModelFile(code, gender)
-            ?: findCachedModelFile(code, null)
-            ?: findCachedModelFile(code, if (gender.equals("FEMALE", true)) "MALE" else "FEMALE")
         return model != null && model.length() > MIN_VALID_ONNX_BYTES
     }
 
@@ -254,10 +252,10 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
         speed: Float
     ): NinadaSynthesisResult? = withContext(Dispatchers.Default) {
         val code = normalizeLangCode(languageCode)
-        val modelFile = findCachedModelFile(code, gender)
-            ?: findCachedModelFile(code, null)
-            ?: findCachedModelFile(code, if (gender.equals("FEMALE", true)) "MALE" else "FEMALE")
-            ?: run { Log.e(TAG, "DIAG model missing lang=$code gender=$gender dir=${modelsDir.absolutePath}"); return@withContext null }
+        // Strict gender routing: do not silently substitute the opposite voice model.
+        val requestedGender = if (gender.equals("FEMALE", true)) "FEMALE" else "MALE"
+        val modelFile = findCachedModelFile(code, requestedGender)
+            ?: run { Log.e(TAG, "DIAG requested model missing lang=$code gender=$requestedGender dir=${modelsDir.absolutePath}"); return@withContext null }
         Log.i(TAG, "DIAG model found lang=$code file=${modelFile.name} bytes=${modelFile.length()}")
 
         if (modelFile.length() <= MIN_VALID_ONNX_BYTES) return@withContext null
@@ -656,7 +654,6 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
         manifest: JSONObject?
     ): List<String> {
         val paths = LinkedHashSet<String>()
-        val otherGender = if (gender == "female") "male" else "female"
 
         // 1. Paths discovered dynamically from Ninada's official models_manifest.json
         manifest?.let { json ->
@@ -665,28 +662,16 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
             val mobileExact = allOnnx.filter {
                 it.contains("mobile", true) && matchesLanguageAndGender(it, code, gender)
             }
-            val mobileLang = allOnnx.filter {
-                it.contains("mobile", true) && matchesLanguage(it, code)
-            }
             val studioExact = allOnnx.filter {
                 !it.contains("mobile", true) && matchesLanguageAndGender(it, code, gender)
             }
-            val studioLang = allOnnx.filter {
-                !it.contains("mobile", true) && matchesLanguage(it, code)
-            }
             paths.addAll(mobileExact)
-            paths.addAll(mobileLang)
             paths.addAll(studioExact)
-            paths.addAll(studioLang)
         }
 
         // 2. Canonical Ninada Mobile-Tier & Studio-Tier Hugging Face paths
         paths.add("onnx_mobile/${code}_${gender}.onnx")
-        paths.add("onnx_mobile/${code}.onnx")
-        paths.add("onnx_mobile/${code}_${otherGender}.onnx")
         paths.add("onnx/${code}_${gender}.onnx")
-        paths.add("onnx/${code}.onnx")
-        paths.add("onnx/${code}_${otherGender}.onnx")
         return paths.toList()
     }
 
