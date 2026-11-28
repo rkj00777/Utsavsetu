@@ -278,7 +278,12 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
                 } else {
                     closeActiveSessionLocked()
                     val options = OrtSession.SessionOptions().apply {
-                        setIntraOpNumThreads(2)
+                        // Conservative settings for mobile devices: avoid aggressive graph/kernel
+                        // optimization paths implicated by native SIGILL during Ninada inference.
+                        setIntraOpNumThreads(1)
+                        setInterOpNumThreads(1)
+                        setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+                        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT)
                     }
                     env.createSession(modelFile.absolutePath, options).also {
                         activeSession = it
