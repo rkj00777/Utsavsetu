@@ -538,12 +538,9 @@ fun PanchangStrip(
                 enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
                 exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
             ) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
-                    DailyPanchangTimeline(panchang = panchang)
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                    Spacer(modifier = Modifier.height(10.dp))
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    // Compact disclosure: keep the expanded panel within short-phone bounds.
+                    // Detailed timeline remains available on the dedicated Panchang screen.
 
                     // Balanced 2x2 Grid so no column ever stretches into a narrow vertical tower
                     val nakshatraValue = panchang.nakshatra.endTime?.let {
