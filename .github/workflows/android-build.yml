@@ -52,7 +52,19 @@ jobs:
             echo "::error::DEBUG_KEYSTORE_BASE64 repository secret is missing."
             exit 1
           fi
-          printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > debug.keystore
+          python3 - <<'PY'
+          import os, re, base64
+          raw = os.environ.get('DEBUG_KEYSTORE_BASE64', '')
+          cleaned = re.sub(r'[^A-Za-z0-9+/=]', '', raw)
+          cleaned = cleaned.rstrip('=')
+          cleaned += '=' * ((4 - len(cleaned) % 4) % 4)
+          data = base64.b64decode(cleaned, validate=True)
+          if not data:
+              raise SystemExit('Decoded keystore is empty')
+          with open('debug.keystore', 'wb') as f:
+              f.write(data)
+          print(f'Keystore decoded successfully ({len(data)} bytes).')
+          PY
           test -s debug.keystore
           keytool -list -v -keystore debug.keystore \
             -storepass android -alias androiddebugkey
