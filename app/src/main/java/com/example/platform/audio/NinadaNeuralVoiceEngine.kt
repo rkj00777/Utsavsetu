@@ -449,40 +449,28 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
      */
     internal fun tokenizeForLanguage(text: String, langCode: String): LongArray {
         val vocabMap = loadVocabMapForLanguage(langCode)
+        // Never invent token IDs: the model vocabulary is part of the ONNX contract.
+        // Missing or mismatched vocab must trigger device TTS fallback, not garbage speech.
+        if (vocabMap.isEmpty()) {
+            Log.e(TAG, "Ninada tokenization rejected: no valid vocabulary for lang=$langCode")
+            return LongArray(0)
+        }
         val ids = ArrayList<Long>(text.length * 2 + 2)
         val blankId = vocabMap["_"] ?: vocabMap["<pad>"] ?: vocabMap["<blank>"] ?: 0L
-        val spaceId = vocabMap[" "] ?: vocabMap["\u0020"] ?: blankId
+        val spaceId = vocabMap[" "] ?: blankId
         val useBlankInterleaving = vocabMap.containsKey("_") || vocabMap.containsKey("<pad>") || vocabMap.containsKey("<blank>")
-
-        if (vocabMap.isNotEmpty()) {
+        if (useBlankInterleaving) ids.add(blankId)
+        for (ch in text) {
+            val key = ch.toString()
+            val mapped = vocabMap[key]
+                ?: vocabMap[key.lowercase(Locale.ROOT)]
+                ?: if (ch.isWhitespace()) spaceId else null
+            if (mapped == null) {
+                Log.e(TAG, "Ninada tokenization rejected: unmapped character in input lang=$langCode")
+                return LongArray(0)
+            }
+            ids.add(mapped)
             if (useBlankInterleaving) ids.add(blankId)
-            for (ch in text) {
-                val key = ch.toString()
-                val mapped = vocabMap[key]
-                    ?: vocabMap[key.lowercase(Locale.ROOT)]
-                    ?: if (ch.isWhitespace()) spaceId else null
-                if (mapped != null) {
-                    ids.add(mapped)
-                    if (useBlankInterleaving) ids.add(blankId)
-                }
-            }
-        } else {
-            // Fallback Pan-Indic Unicode codepoint offset table if vocab.json was unavailable
-            val baseOffset = scriptUnicodeBase(langCode)
-            ids.add(0L)
-            for (ch in text) {
-                val code = ch.code
-                val token = when {
-                    ch.isWhitespace() -> 1L
-                    ch in '!'..'~' -> ((code - 32) % 90 + 2).toLong()
-                    code in baseOffset..(baseOffset + 0x7F) -> (code - baseOffset + 2).toLong()
-                    else -> null
-                }
-                if (token != null) {
-                    ids.add(token)
-                    ids.add(0L)
-                }
-            }
         }
         return ids.toLongArray()
     }
