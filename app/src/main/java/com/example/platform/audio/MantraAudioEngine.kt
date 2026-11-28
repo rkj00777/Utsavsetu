@@ -956,11 +956,21 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
                 offset += count
             }
 
-            // Allow hardware audio pipeline to drain final buffer smoothly
-            if (isActive && generation == activePlaybackGeneration) {
-                delay(180)
+            // Wait for the AudioTrack hardware queue to actually play the synthesized
+            // waveform. A fixed short delay incorrectly marked long chants complete
+            // immediately after PCM was queued, while the voice was still playing.
+            if (isActive && generation == activePlaybackGeneration && offset >= pcm16.size) {
+                val expectedFrames = pcm16.size.toLong()
+                val drainDeadlineMs = System.currentTimeMillis() +
+                    ((expectedFrames * 1000L / sampleRate) + 5000L)
+                while (isActive && generation == activePlaybackGeneration &&
+                    track.playbackHeadPosition.toLong() and 0xFFFFFFFFL < expectedFrames &&
+                    System.currentTimeMillis() < drainDeadlineMs
+                ) {
+                    delay(20)
+                }
             }
-            offset >= pcm16.size
+            offset >= pcm16.size && generation == activePlaybackGeneration
         } catch (ce: CancellationException) {
             throw ce
         } catch (t: Throwable) {
