@@ -42,32 +42,24 @@ jobs:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
 
-      - name: Prepare debug signing key
+      - name: Diagnose debug signing secret (safe length check)
         shell: bash
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
-            echo "::error::DEBUG_KEYSTORE_BASE64 repository secret is missing."
-            exit 1
-          fi
           python3 - <<'PY'
-          import os, re, base64
+          import os, re
           raw = os.environ.get('DEBUG_KEYSTORE_BASE64', '')
-          cleaned = re.sub(r'[^A-Za-z0-9+/=]', '', raw)
-          cleaned = cleaned.rstrip('=')
-          cleaned += '=' * ((4 - len(cleaned) % 4) % 4)
-          data = base64.b64decode(cleaned, validate=True)
-          if not data:
-              raise SystemExit('Decoded keystore is empty')
-          with open('debug.keystore', 'wb') as f:
-              f.write(data)
-          print(f'Keystore decoded successfully ({len(data)} bytes).')
+          cleaned = re.sub(r'\\s', '', raw)
+          print(f'Secret present: {bool(raw)}')
+          print(f'Raw character count: {len(raw)}')
+          print(f'Whitespace-stripped character count: {len(cleaned)}')
+          print(f'Base64 alphabet/padding characters only: {bool(re.fullmatch(r"[A-Za-z0-9+/]*={0,2}", cleaned))}')
+          print('Expected character count for recovered 2650-byte keystore: 3536')
           PY
-          test -s debug.keystore
-          keytool -list -v -keystore debug.keystore \
-            -storepass android -alias androiddebugkey
+          echo "Diagnostic only; intentionally not decoding or printing secret contents."
+          exit 1
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
