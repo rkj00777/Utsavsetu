@@ -28,10 +28,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -66,17 +66,20 @@ jobs:
           grep -Fq '3F:50:AA:69:A1:C7:BF:EC:CD:1D:F5:16:3F:75:C0:1F:E6:9E:4D:B3' key-info.txt || { echo "::error::Debug certificate does not match installed UtsavSetu signing identity"; exit 1; }
           echo "Verified matching debug signing certificate."
 
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v5
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Run JVM and Robolectric tests
-        run: bash ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
 
       - name: Build debug APK and App Bundle
-        run: bash ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:bundleDebug
 
       - name: Stage debug distributables
         shell: bash
@@ -88,7 +91,7 @@ jobs:
           (cd dist/debug && sha256sum UtsavSetu-debug.apk UtsavSetu-debug.aab > SHA256SUMS.txt)
 
       - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: UtsavSetu-debug-APK
           path: dist/debug/UtsavSetu-debug.apk
@@ -96,7 +99,7 @@ jobs:
           retention-days: 30
 
       - name: Upload debug AAB artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: UtsavSetu-debug-AAB
           path: dist/debug/UtsavSetu-debug.aab
@@ -104,7 +107,7 @@ jobs:
           retention-days: 30
 
       - name: Upload debug checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: UtsavSetu-debug-SHA256
           path: dist/debug/SHA256SUMS.txt
@@ -139,7 +142,7 @@ jobs:
 
       - name: Build production-signed APK and App Bundle
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
-        run: bash ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
 
       - name: Stage production release files
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
@@ -153,7 +156,7 @@ jobs:
 
       - name: Upload production APK artifact
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: UtsavSetu-release-APK
           path: dist/release/UtsavSetu-release.apk
@@ -162,7 +165,7 @@ jobs:
 
       - name: Upload production AAB artifact
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.KEYSTORE_BASE64 != '' && env.STORE_PASSWORD != '' && env.KEY_PASSWORD != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: UtsavSetu-release-AAB
           path: dist/release/UtsavSetu-release.aab
