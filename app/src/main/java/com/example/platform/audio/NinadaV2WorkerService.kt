@@ -32,7 +32,7 @@ class NinadaV2WorkerService : Service() {
                 try {
                     val dir = File(cacheDir, "ninada_worker_pcm").apply { mkdirs() }
                     val file = File(dir, "$id.pcm").apply { delete() }
-                    DataOutputStream(BufferedOutputStream(file.outputStream())).use { out -> it.pcm16.forEach(out::writeShort) }
+                    DataOutputStream(BufferedOutputStream(file.outputStream())).use { out -> for (sample in it.pcm16) out.writeShort(sample.toInt()) }
                     file.name
                 } catch (_: Throwable) { null }
             }
