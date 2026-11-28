@@ -859,9 +859,11 @@ class MantraAudioEngine private constructor(private val appContext: Context) : T
             } catch (t: Throwable) {
                 AppCrashMonitor.recordHandledException("MantraAudioEngine.playMantraNinada", t)
                 if (generation == activePlaybackGeneration && _playbackState.value.isPlaying) {
+                    ninadaWorkerCircuitBroken = true
                     _playbackState.value = _playbackState.value.copy(
                         isSynthesizing = false,
-                        audioStatusMessage = "Ninada could not start: ${t.message ?: "audio error"}. Using device voice."
+                        activeVoiceEngineLabel = "Device TTS · Fallback",
+                        audioStatusMessage = "Ninada failed: ${t.message ?: "audio error"}. Worker paused for this session; using device voice."
                     )
                     speakWithDeviceNeuralTts(mantra, langCode)
                 }
