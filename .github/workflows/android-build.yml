@@ -42,28 +42,24 @@ jobs:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
 
-      - name: Prepare debug signing key
+      - name: Diagnose secret format safely
         shell: bash
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, re, base64
-          raw = os.environ.get('DEBUG_KEYSTORE_BASE64', '')
-          cleaned = re.sub(r'\\s', '', raw)
-          if not cleaned:
-              raise SystemExit("Missing DEBUG_KEYSTORE_BASE64")
-          if not re.fullmatch(r'[A-Za-z0-9+/]*={0,2}', cleaned):
-              raise SystemExit("Secret is not valid Base64 characters")
-          data = base64.b64decode(cleaned, validate=True)
-          if len(data) != 2650:
-              raise SystemExit(f"Unexpected decoded size {len(data)} (expected 2650)")
-          with open('debug.keystore', 'wb') as f:
-              f.write(data)
-          print(f"Keystore decoded ({len(data)} bytes).")
+          import os
+          raw=os.environ.get('DEBUG_KEYSTORE_BASE64','')
+          print('Secret present:', bool(raw))
+          print('Length:', len(raw))
+          print('Expected Base64 length: 3536')
+          invalid=[(i,ord(ch)) for i,ch in enumerate(raw) if ch not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=']
+          print('Invalid-character count:', len(invalid))
+          print('Invalid-character positions/codepoints (not contents):', invalid[:30])
+          print('Padding count:', raw.count('='))
           PY
-          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey
+          exit 1
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
