@@ -257,7 +257,8 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
         val modelFile = findCachedModelFile(code, gender)
             ?: findCachedModelFile(code, null)
             ?: findCachedModelFile(code, if (gender.equals("FEMALE", true)) "MALE" else "FEMALE")
-            ?: return@withContext null
+            ?: run { Log.e(TAG, "DIAG model missing lang=$code gender=$gender dir=${modelsDir.absolutePath}"); return@withContext null }
+        Log.i(TAG, "DIAG model found lang=$code file=${modelFile.name} bytes=${modelFile.length()}")
 
         if (modelFile.length() <= MIN_VALID_ONNX_BYTES) return@withContext null
 
@@ -265,7 +266,8 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
         if (preparedText.isBlank()) return@withContext null
 
         val tokenIds = tokenizeForLanguage(preparedText, code)
-        if (tokenIds.isEmpty()) return@withContext null
+        Log.i(TAG, "DIAG normalized chars=${preparedText.length} tokens=${tokenIds.size} vocabFile=${vocabsFile.exists()} vocabBytes=${if (vocabsFile.exists()) vocabsFile.length() else 0}")
+        if (tokenIds.isEmpty()) { Log.e(TAG, "DIAG empty tokens lang=$code"); return@withContext null }
 
         sessionMutex.withLock {
             val createdTensors = mutableListOf<OnnxTensor>()
@@ -285,7 +287,9 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
                         setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
                         setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT)
                     }
+                    Log.i(TAG, "DIAG creating ORT session lang=$code model=${modelFile.name}")
                     env.createSession(modelFile.absolutePath, options).also {
+                        Log.i(TAG, "DIAG session created inputs=${it.inputInfo.keys} outputs=${it.outputInfo.keys}")
                         activeSession = it
                         activeSessionKey = sessionKey
                     }
@@ -299,10 +303,14 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
                     speed = speed,
                     createdTensors = createdTensors
                 )
-                if (inputs.isEmpty()) return@withContext null
+                Log.i(TAG, "DIAG tensor binding inputs=${inputs.keys}")
+                if (inputs.isEmpty()) { Log.e(TAG, "DIAG no tensors bound"); return@withContext null }
 
+                Log.i(TAG, "DIAG inference starting lang=$code tokenCount=${tokenIds.size}")
                 result = session.run(inputs)
-                val floatWave = extractAudioFloatArray(result) ?: return@withContext null
+                Log.i(TAG, "DIAG inference returned outputs=${result?.size()}")
+                val floatWave = extractAudioFloatArray(result) ?: run { Log.e(TAG, "DIAG waveform extraction failed"); return@withContext null }
+                Log.i(TAG, "DIAG waveform samples=${floatWave.size}")
                 if (floatWave.size < 400) return@withContext null
 
                 val pcm16 = normalizeAndConvertToPcm16(floatWave) ?: return@withContext null
@@ -316,7 +324,7 @@ class NinadaNeuralVoiceEngine private constructor(private val appContext: Contex
             } catch (ce: CancellationException) {
                 throw ce
             } catch (t: Throwable) {
-                Log.w(TAG, "Ninada ONNX synthesis fallback for '$code': ${t.message}")
+                Log.e(TAG, "DIAG Ninada exception lang=$code", t)
                 AppCrashMonitor.recordHandledException("NinadaNeuralVoiceEngine.synthesize", t)
                 null
             } finally {
